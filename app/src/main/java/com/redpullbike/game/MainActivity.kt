@@ -235,8 +235,8 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
 }
 @Composable private fun SettingRow(label:String,value:Boolean,onChange:(Boolean)->Unit) { Row(Modifier.fillMaxWidth().padding(vertical=12.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){Text(label,color=Navy);Switch(value,onChange)} }
 @Composable private fun GameScreen(level:PuzzleLevel,remaining:Set<Int>,lives:Int,hints:Int,hintId:Int,grid:Boolean,message:String,zoom:Float,pan:Offset,bounceId:Int,escapingId:Int,onZoom:(Float)->Unit,onPan:(Offset)->Unit,onArrow:(Int)->Unit,onHint:()->Unit,onGrid:()->Unit,onRestart:()->Unit,onBack:()->Unit) {
-    val bounceProgress by animateFloatAsState(targetValue=if(bounceId>=0) 1f else 0f, animationSpec=tween(260), label="arrowBounce")
-    val escapeProgress by animateFloatAsState(targetValue=if(escapingId>=0) 1f else 0f, animationSpec=tween(260), label="arrowEscape")
+    val bounceProgress by animateFloatAsState(targetValue=if(bounceId>=0) 1f else 0f, animationSpec=tween(230, easing=FastOutSlowInEasing), label="arrowBounce")
+    val escapeProgress by animateFloatAsState(targetValue=if(escapingId>=0) 1f else 0f, animationSpec=tween(260, easing=LinearOutSlowInEasing), label="arrowEscape")
     Column(Modifier.fillMaxSize().background(Color.White).padding(horizontal=18.dp, vertical=8.dp)) {
         Text("Tap Away\nArrows",modifier=Modifier.fillMaxWidth(),textAlign=TextAlign.Center,fontSize=30.sp,lineHeight=34.sp,fontWeight=FontWeight.ExtraBold,color=Navy)
         Spacer(Modifier.height(14.dp))
@@ -256,10 +256,15 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
                     val ox=(size.width-side*level.cols)/2f+pan.x
                     val oy=(size.height-side*level.rows)/2f+pan.y
                     val p=V((pos.x-ox)/side,(pos.y-oy)/side)
-                    val hit=level.paths.filter{it.id in remaining}.firstOrNull { path ->
-                        path.points.zipWithNext().any { (a,b)->pointNearSegment(p,a,b,.23f) }
+                    var hitId=-1
+                    for(path in level.paths) {
+                        if(path.id !in remaining) continue
+                        for(j in 0 until path.points.lastIndex) {
+                            if(pointNearSegment(p,path.points[j],path.points[j+1],.23f)) { hitId=path.id; break }
+                        }
+                        if(hitId>=0) break
                     }
-                    hit?.let{onArrow(it.id)}
+                    if(hitId>=0) onArrow(hitId)
                 }
             }) {
                 val side=min(size.width/level.cols,size.height/level.rows)*zoom
