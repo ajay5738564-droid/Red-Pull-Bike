@@ -1,4 +1,4 @@
-name: Build BIKE RED PULL APK
+name: Build ARROW ESCAPE PUZZLE APK
 on:
   push:
     branches: [main]
@@ -22,13 +22,13 @@ jobs:
         run: gradle assembleDebug assembleRelease --no-daemon --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: BIKE-RED-PULL-debug-APK
+          name: ARROW-ESCAPE-debug-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
       - uses: actions/upload-artifact@v4
         with:
-          name: BIKE-RED-PULL-release-APK
+          name: ARROW-ESCAPE-release-APK
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
