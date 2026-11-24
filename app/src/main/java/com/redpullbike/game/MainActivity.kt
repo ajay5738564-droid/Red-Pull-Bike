@@ -97,7 +97,10 @@ private object Levels {
                 val x1=x0+part
                 val toRight=((row+variant)%2==0)
                 val bend=if((row+index+id)%2==0) -.28f else .28f
-                val points=if(toRight) listOf(V(x0,y+bend),V(x0,y),V(x1,y)) else listOf(V(x1,y+bend),V(x1,y),V(x0,y))
+                val amp=.22f*sy
+                val a=part*.22f
+                val b=part*.52f
+                val points=if(toRight) listOf(V(x0,y+amp),V(x0,y-amp),V(x0+a,y-amp),V(x0+a,y+amp),V(x0+b,y+amp),V(x0+b,y-amp),V(x1,y-amp)) else listOf(V(x1,y+amp),V(x1,y-amp),V(x1-a,y-amp),V(x1-a,y+amp),V(x1-b,y+amp),V(x1-b,y-amp),V(x0,y-amp))
                 val exit=points.last()
                 val dir=if(toRight) V(1f,0f) else V(-1f,0f)
                 ArrowPath(nextId++,points,exit,dir)
