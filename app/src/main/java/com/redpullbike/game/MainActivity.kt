@@ -286,19 +286,21 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
                     }
                     val morph=if(isEscaping) (escapeProgress/.42f).coerceIn(0f,1f) else 0f
                     val travel=if(isEscaping) ((escapeProgress-.42f)/.58f).coerceIn(0f,1f) else 0f
-                    var travelled=0f
-                    val straight=ArrayList<V>(arrow.points.size)
-                    for(i in arrow.points.indices) {
-                        if(i>0) travelled+=hypot(arrow.points[i].x-arrow.points[i-1].x,arrow.points[i].y-arrow.points[i-1].y)
-                        straight.add(V(arrow.exit.x-arrow.direction.x*travelled,arrow.exit.y-arrow.direction.y*travelled))
-                    }
                     val shift=bounceShift+travel*escapeCells*side
-                    val pts=arrow.points.indices.map { i ->
-                        val p=arrow.points[i]; val q=straight[i]
-                        val x=p.x+(q.x-p.x)*morph
-                        val y=p.y+(q.y-p.y)*morph
-                        Offset(ox+x*side+arrow.direction.x*shift,oy+y*side+arrow.direction.y*shift)
-                    }
+                    val pts=if(isEscaping) {
+                        var travelled=0f
+                        val straight=ArrayList<V>(arrow.points.size)
+                        for(i in arrow.points.indices) {
+                            if(i>0) travelled+=hypot(arrow.points[i].x-arrow.points[i-1].x,arrow.points[i].y-arrow.points[i-1].y)
+                            straight.add(V(arrow.exit.x-arrow.direction.x*travelled,arrow.exit.y-arrow.direction.y*travelled))
+                        }
+                        arrow.points.indices.map { i ->
+                            val p=arrow.points[i]; val q=straight[i]
+                            val x=p.x+(q.x-p.x)*morph
+                            val y=p.y+(q.y-p.y)*morph
+                            Offset(ox+x*side+arrow.direction.x*shift,oy+y*side+arrow.direction.y*shift)
+                        }
+                    } else arrow.points.map { Offset(ox+it.x*side+arrow.direction.x*shift,oy+it.y*side+arrow.direction.y*shift) }
                     val col=if(arrow.id==hintId) Blue else Navy
                     val path=Path().apply { pts.firstOrNull()?.let{moveTo(it.x,it.y)};pts.drop(1).forEach{lineTo(it.x,it.y)} }
                     drawPath(path,col,style=Stroke(width=max(.72.dp.toPx(),side*.014f),cap=StrokeCap.Round,join=PathEffectCorner))
