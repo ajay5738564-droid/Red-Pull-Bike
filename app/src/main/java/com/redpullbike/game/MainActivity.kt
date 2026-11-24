@@ -139,8 +139,8 @@ private class ArrowPuzzleView(context: Context) : View(context) {
             levelWon = true
             screen = 2
             val old = prefs.getInt("best_" + level, 0)
-            val score = moves
-            if (old == 0 || score < old) prefs.edit().putInt("best_" + level, score).apply()
+            val moveScore = moves
+            if (old == 0 || moveScore < old) prefs.edit().putInt("best_" + level, moveScore).apply()
             score += 10
             coins += 10
             message = "Level clear! +10 points, +10 coins"
