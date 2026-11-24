@@ -100,13 +100,27 @@ private object Levels {
                 val toRight=((row+variant)%2==0)
                 val amp=(.30f + ((id+row+index)%3)*.055f)*sy
                 val turns=3+((id*3+row+index)%3)
-                val fractions=(1..turns).map { it.toFloat()/(turns+1f) }
-                val zig=fractions.mapIndexed { k,f ->
-                    val x=x0+part*f
-                    val yy=y+(if((k+row+id+index)%2==0) -amp else amp)
-                    V(x,yy)
+                val points=ArrayList<V>()
+                var currentY=y+(if((id+row+index)%2==0) -amp else amp)
+                if(toRight) {
+                    points.add(V(x0,currentY))
+                    for(k in 0 until turns) {
+                        val xx=x0+part*(k+1)/(turns+1f)
+                        points.add(V(xx,currentY))
+                        currentY=y+(if((k+row+id+index)%2==0) amp else -amp)
+                        points.add(V(xx,currentY))
+                    }
+                    points.add(V(x1,currentY))
+                } else {
+                    points.add(V(x1,currentY))
+                    for(k in 0 until turns) {
+                        val xx=x1-part*(k+1)/(turns+1f)
+                        points.add(V(xx,currentY))
+                        currentY=y+(if((k+row+id+index)%2==0) amp else -amp)
+                        points.add(V(xx,currentY))
+                    }
+                    points.add(V(x0,currentY))
                 }
-                val points=if(toRight) listOf(V(x0,y+amp*.35f))+zig+listOf(V(x1,y+(if((turns+row+id)%2==0) -amp else amp))) else listOf(V(x1,y+amp*.35f))+zig.map { V(x1-(it.x-x0),it.y) }+listOf(V(x0,y+(if((turns+row+id)%2==0) -amp else amp)))
                 val exit=points.last()
                 val dir=if(toRight) V(1f,0f) else V(-1f,0f)
                 ArrowPath(nextId++,points,exit,dir)
