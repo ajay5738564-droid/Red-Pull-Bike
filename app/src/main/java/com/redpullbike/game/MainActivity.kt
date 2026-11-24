@@ -317,7 +317,7 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
                         }
                     } else arrow.points.map { Offset(ox+it.x*side+arrow.direction.x*shift,oy+it.y*side+arrow.direction.y*shift) }
                     val col=if(arrow.id==hintId) Blue else Navy
-                    val path=Path().apply { pts.firstOrNull()?.let{moveTo(it.x,it.y)};pts.drop(1).forEach{lineTo(it.x,it.y)} }
+                    val path=Path().apply { if(pts.isNotEmpty()) { moveTo(pts[0].x,pts[0].y); for(i in 1 until pts.size) lineTo(pts[i].x,pts[i].y) } }
                     drawPath(path,col,style=Stroke(width=max(.85.dp.toPx(),side*.018f),cap=StrokeCap.Round,join=PathEffectCorner))
                     val end=pts.last()
                     val angle=atan2(arrow.direction.y,arrow.direction.x)
