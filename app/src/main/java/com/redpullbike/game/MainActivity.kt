@@ -223,6 +223,7 @@ private class ArrowPuzzleView(context: Context) : View(context) {
             2 -> drawWin(canvas,w,h)
             else -> drawGameOver(canvas,w,h)
         }
+        if (screen == 1 && hearts <= 0 && collisionTileId == -1) screen = 3
         pulse += 0.035f
         postInvalidateDelayed(40)
     }
@@ -354,7 +355,7 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         rounded(c,w*.2f,h*.48f,w*.8f,h*.66f,18*density,Color.rgb(20,43,77),cyan,1.5f*density)
         text(c,"+10 COINS  •  +10 POINTS",w*.5f,h*.48f+35*density,17*density,gold,Paint.Align.CENTER,true)
         text(c,"MOVES  "+moves,w*.5f,h*.48f+66*density,13*density,white,Paint.Align.CENTER)
-        bigButton(c,if(level>=10) "FINISH GAME" else "NEXT LEVEL",w*.22f,h*.72f,w*.78f,h*.72f+50*density,cyan,Color.rgb(7,35,58))
+        bigButton(c,if(level>=50) "FINISH GAME" else "NEXT LEVEL",w*.22f,h*.72f,w*.78f,h*.72f+50*density,cyan,Color.rgb(7,35,58))
         bigButton(c,"MAIN MENU",w*.22f,h*.72f+64*density,w*.78f,h*.72f+111*density,Color.rgb(48,73,121),white)
     }
 
@@ -444,7 +445,7 @@ private class ArrowPuzzleView(context: Context) : View(context) {
                             playSfx(ToneGenerator.TONE_PROP_NACK)
                             lastHint=-1
                             message="Blocked! -1 heart"
-                            if(hearts<=0) screen=3
+                            if(hearts<=0) message="Last heart lost!"
                         }
                     }
                 }
