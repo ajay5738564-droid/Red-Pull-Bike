@@ -371,9 +371,25 @@ private class ArrowPuzzleView(context: Context) : View(context) {
 
     override fun onTouchEvent(event:MotionEvent):Boolean {
         scaleDetector.onTouchEvent(event)
-        if(event.pointerCount > 1 || event.action == MotionEvent.ACTION_MOVE) return true
-        if(event.action!=MotionEvent.ACTION_UP) return true
+        if (event.action == MotionEvent.ACTION_DOWN) {
+            lastTouchX = event.x; lastTouchY = event.y
+            touchDownX = event.x; touchDownY = event.y
+            dragged = false
+            return true
+        }
+        if (event.action == MotionEvent.ACTION_MOVE) {
+            if (event.pointerCount == 1) {
+                val dx = event.x - lastTouchX
+                val dy = event.y - lastTouchY
+                if (abs(event.x-touchDownX) > 8*density || abs(event.y-touchDownY) > 8*density) dragged = true
+                if (dragged) { panX += dx; panY += dy; invalidate() }
+                lastTouchX = event.x; lastTouchY = event.y
+            }
+            return true
+        }
+        if (event.pointerCount > 1 || event.action != MotionEvent.ACTION_UP) return true
         val x=event.x; val y=event.y; val w=width.toFloat(); val h=height.toFloat()
+        if (dragged) { dragged = false; return true }
         when(screen) {
             0 -> {
                 val x0=w*.16f; val x1=w*.84f
