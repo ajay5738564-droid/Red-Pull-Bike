@@ -3,275 +3,342 @@ package com.redpullbike.game
 import android.app.Activity
 import android.os.Bundle
 import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.opengl.GLES20
-import android.opengl.GLSurfaceView
-import android.opengl.Matrix
+import android.graphics.*
 import android.view.MotionEvent
 import android.view.View
-import android.widget.FrameLayout
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.FloatBuffer
-import javax.microedition.khronos.egl.EGLConfig
-import javax.microedition.khronos.opengles.GL10
+import kotlin.math.*
+import kotlin.random.Random
 
 class MainActivity : Activity() {
-    private lateinit var glView: GLSurfaceView
+    private lateinit var game: ArrowPuzzleView
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.decorView.systemUiVisibility = 5894 or 1024 or 512 or 4096
-        val state = GameState(this)
-        val root = FrameLayout(this)
-        glView = GLSurfaceView(this).apply {
-            setEGLContextClientVersion(2)
-            setRenderer(RoadRenderer(state))
-            renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
-            preserveEGLContextOnPause = false
-        }
-        root.addView(glView)
-        root.addView(GameHud(this, state))
-        setContentView(root)
+        game = ArrowPuzzleView(this)
+        setContentView(game)
     }
-    override fun onPause() {
-        if (::glView.isInitialized) glView.onPause()
-        super.onPause()
-    }
-    override fun onResume() {
-        super.onResume()
-        if (::glView.isInitialized) glView.onResume()
-    }
+    override fun onResume() { super.onResume(); if (::game.isInitialized) game.resumeGame() }
+    override fun onPause() { if (::game.isInitialized) game.pauseGame(); super.onPause() }
 }
 
-private class GameState(ctx: Context) {
-    private val prefs = ctx.getSharedPreferences("redpull", 0)
-    var screen = 0
-    var speed = 0f
-    var distance = 0f
-    var coins = prefs.getInt("coins", 0)
-    var bike = prefs.getInt("bike", 0)
-    var holding = false
-    var paused = false
-    private var last = System.nanoTime()
-    val names = listOf("RED SPORT", "R15 STYLE", "NINJA STYLE", "STREET X")
-    val prices = listOf(0, 350, 800, 1200)
-    val unlocked = prefs.getStringSet("unlocked", setOf("0"))!!.toMutableSet()
-    fun save() { prefs.edit().putInt("coins", coins).putInt("bike", bike).putStringSet("unlocked", unlocked).apply() }
-    fun update() {
-        val now = System.nanoTime()
-        val dt = ((now-last)/1000000000.0).toFloat().coerceIn(0f, 0.05f)
-        last = now
-        if (screen == 1 && !paused) {
-            speed = if (holding) (speed + 75f*dt).coerceAtMost(260f) else (speed - 32f*dt).coerceAtLeast(0f)
-            distance += speed/3.6f*dt
-        }
-    }
-}
+private data class ArrowTile(val id: Int, val x: Int, val y: Int, val dir: Int)
+private data class GameLevel(val number: Int, val tiles: MutableList<ArrowTile>)
 
-private class RoadRenderer(private val state: GameState) : GLSurfaceView.Renderer {
-    private val projection = FloatArray(16)
-    private val view = FloatArray(16)
-    private val model = FloatArray(16)
-    private val mvp = FloatArray(16)
-    private var program = 0
-    private var position = 0
-    private var matrix = 0
-    private var color = 0
-    private lateinit var cube: FloatBuffer
-    private val vertices = floatArrayOf(
-        -.5f,-.5f,-.5f, .5f,-.5f,-.5f, .5f,.5f,-.5f, -.5f,-.5f,-.5f, .5f,.5f,-.5f, -.5f,.5f,-.5f,
-        -.5f,-.5f,.5f, .5f,.5f,.5f, .5f,-.5f,.5f, -.5f,-.5f,.5f, -.5f,.5f,.5f, .5f,.5f,.5f,
-        -.5f,-.5f,-.5f, -.5f,.5f,-.5f, -.5f,.5f,.5f, -.5f,-.5f,-.5f, -.5f,.5f,.5f, -.5f,-.5f,.5f,
-        .5f,-.5f,-.5f, .5f,-.5f,.5f, .5f,.5f,.5f, .5f,-.5f,-.5f, .5f,.5f,.5f, .5f,.5f,-.5f,
-        -.5f,.5f,-.5f, .5f,.5f,-.5f, .5f,.5f,.5f, -.5f,.5f,-.5f, .5f,.5f,.5f, -.5f,.5f,.5f,
-        -.5f,-.5f,-.5f, .5f,-.5f,.5f, .5f,-.5f,-.5f, -.5f,-.5f,-.5f, -.5f,-.5f,.5f, .5f,-.5f,.5f
+private class ArrowPuzzleView(context: Context) : View(context) {
+    private val prefs = context.getSharedPreferences("arrow_puzzle_save", Context.MODE_PRIVATE)
+    private val bgPaint = Paint(3)
+    private val p = Paint(3)
+    private val path = Path()
+    private val density = resources.displayMetrics.density
+    private var screen = 0
+    private var level = prefs.getInt("level", 1).coerceAtLeast(1)
+    private var coins = prefs.getInt("coins", 120)
+    private var soundOn = prefs.getBoolean("sound", true)
+    private var moves = 0
+    private var hints = 3
+    private var message = "Clear every arrow to solve the puzzle"
+    private var board = mutableListOf<ArrowTile>()
+    private val history = ArrayDeque<List<ArrowTile>>()
+    private var boardLeft = 0f
+    private var boardTop = 0f
+    private var cell = 0f
+    private var gridSize = 6
+    private var pulse = 0f
+    private var lastHint = -1
+    private var levelWon = false
+    private var best = prefs.getInt("best_" + level, 0)
+
+    private val bg1 = Color.rgb(10, 18, 42)
+    private val bg2 = Color.rgb(25, 39, 76)
+    private val cyan = Color.rgb(60, 226, 238)
+    private val gold = Color.rgb(255, 198, 76)
+    private val white = Color.rgb(245, 249, 255)
+    private val muted = Color.rgb(159, 178, 211)
+    private val tileColors = intArrayOf(
+        Color.rgb(50, 205, 222), Color.rgb(110, 137, 255),
+        Color.rgb(183, 112, 255), Color.rgb(255, 160, 85)
     )
-    override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
-        GLES20.glEnable(GLES20.GL_DEPTH_TEST)
-        val vs = "attribute vec3 p; uniform mat4 m; void main(){gl_Position=m*vec4(p,1.0);}"
-        val fs = "precision mediump float; uniform vec4 c; void main(){gl_FragColor=c;}"
-        fun compile(type: Int, source: String): Int {
-            val shader = GLES20.glCreateShader(type)
-            GLES20.glShaderSource(shader, source)
-            GLES20.glCompileShader(shader)
-            return shader
-        }
-        program = GLES20.glCreateProgram()
-        GLES20.glAttachShader(program, compile(GLES20.GL_VERTEX_SHADER, vs))
-        GLES20.glAttachShader(program, compile(GLES20.GL_FRAGMENT_SHADER, fs))
-        GLES20.glLinkProgram(program)
-        position = GLES20.glGetAttribLocation(program, "p")
-        matrix = GLES20.glGetUniformLocation(program, "m")
-        color = GLES20.glGetUniformLocation(program, "c")
-        cube = ByteBuffer.allocateDirect(vertices.size*4).order(ByteOrder.nativeOrder()).asFloatBuffer()
-        cube.put(vertices)
-        cube.position(0)
-        GLES20.glClearColor(0.48f,0.75f,0.92f,1f)
-    }
-    override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
-        GLES20.glViewport(0,0,width,height)
-        Matrix.perspectiveM(projection,0,60f,width.toFloat()/height.coerceAtLeast(1),0.1f,150f)
-    }
-    override fun onDrawFrame(gl: GL10?) {
-        state.update()
-        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
-        Matrix.setLookAtM(view,0,0f,4f,9f,0f,1f,-6f,0f,1f,0f)
-        GLES20.glUseProgram(program)
-        val road = if (state.speed > 200f) floatArrayOf(.02f,.02f,.025f,1f) else floatArrayOf(.16f,.17f,.19f,1f)
-        draw(0f,-.2f,-40f,9f,.35f,100f,road)
-        draw(-5f,-.18f,-40f,1f,.2f,100f,floatArrayOf(.65f,.62f,.48f,1f))
-        draw(5f,-.18f,-40f,1f,.2f,100f,floatArrayOf(.65f,.62f,.48f,1f))
-        for (i in 0..16) {
-            val z = -(i*6f + (state.distance*0.65f)%6f)
-            draw(0f,-.01f,z,.13f,.03f,2.4f,floatArrayOf(1f,.92f,.72f,1f))
-            for (side in listOf(-1f,1f)) {
-                val x = side*7.3f
-                draw(x,.5f,z,.25f,1f,.3f,floatArrayOf(.3f,.2f,.12f,1f))
-                draw(x,1.25f,z,1.1f,1.1f,1.1f,floatArrayOf(.12f,.42f,.17f,1f))
-            }
-        }
-        draw(-12f,-.5f,-35f,12f,.08f,100f,floatArrayOf(.05f,.42f,.72f,1f))
-        val bikeColor = when(state.bike) {
-            1 -> floatArrayOf(.05f,.22f,.85f,1f)
-            2 -> floatArrayOf(.05f,.05f,.06f,1f)
-            3 -> floatArrayOf(.7f,.72f,.75f,1f)
-            else -> floatArrayOf(.9f,.025f,.04f,1f)
-        }
-        ring(0f,.62f,.9f,.47f,floatArrayOf(.025f,.025f,.03f,1f),8f)
-        ring(0f,.62f,-.8f,.47f,floatArrayOf(.025f,.025f,.03f,1f),8f)
-        ring(0f,.62f,.9f,.28f,floatArrayOf(.62f,.66f,.70f,1f),3f)
-        ring(0f,.62f,-.8f,.28f,floatArrayOf(.62f,.66f,.70f,1f),3f)
-        draw(0f,.95f,.05f,.32f,.22f,1.55f,floatArrayOf(.16f,.16f,.17f,1f))
-        draw(0f,1.25f,-.25f,.9f,.48f,.85f,bikeColor)
-        draw(0f,1.55f,-.6f,.3f,.28f,.28f,floatArrayOf(.8f,.85f,.9f,1f))
-        draw(0f,1.95f,.1f,.48f,.78f,.45f,floatArrayOf(.08f,.1f,.15f,1f))
-        draw(0f,2.48f,.05f,.42f,.42f,.42f,floatArrayOf(.8f,.66f,.53f,1f))
-        draw(0f,2.52f,-.12f,.46f,.2f,.45f,floatArrayOf(.03f,.04f,.05f,1f))
-    }
-    private fun ring(x: Float,y: Float,z: Float,r: Float,c: FloatArray,width: Float) {
-        val points = FloatArray(96 * 3)
-        for (i in 0 until 96) {
-            val a = i * (Math.PI * 2.0 / 96.0)
-            points[i*3] = x + kotlin.math.cos(a).toFloat() * r
-            points[i*3+1] = y + kotlin.math.sin(a).toFloat() * r
-            points[i*3+2] = z
-        }
-        val buffer = ByteBuffer.allocateDirect(points.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
-        buffer.put(points)
-        buffer.position(0)
-        Matrix.setIdentityM(model,0)
-        Matrix.multiplyMM(mvp,0,view,0,model,0)
-        Matrix.multiplyMM(mvp,0,projection,0,mvp,0)
-        GLES20.glUniformMatrix4fv(matrix,1,false,mvp,0)
-        GLES20.glUniform4fv(color,1,c,0)
-        GLES20.glLineWidth(width)
-        GLES20.glEnableVertexAttribArray(position)
-        GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,0,buffer)
-        GLES20.glDrawArrays(GLES20.GL_LINE_LOOP,0,96)
-        GLES20.glDisableVertexAttribArray(position)
-    }
-    private fun draw(x: Float,y: Float,z: Float,sx: Float,sy: Float,sz: Float,c: FloatArray) {
-        Matrix.setIdentityM(model,0)
-        Matrix.translateM(model,0,x,y,z)
-        Matrix.scaleM(model,0,sx,sy,sz)
-        Matrix.multiplyMM(mvp,0,view,0,model,0)
-        Matrix.multiplyMM(mvp,0,projection,0,mvp,0)
-        GLES20.glUniformMatrix4fv(matrix,1,false,mvp,0)
-        GLES20.glUniform4fv(color,1,c,0)
-        GLES20.glEnableVertexAttribArray(position)
-        GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,0,cube)
-        GLES20.glDrawArrays(GLES20.GL_TRIANGLES,0,36)
-        GLES20.glDisableVertexAttribArray(position)
-    }
-}
 
-private class GameHud(ctx: Context, private val state: GameState) : View(ctx) {
-    private val paint = Paint(3)
-    private fun label(canvas: Canvas, value: String, x: Float, y: Float, size: Float, color: Int = Color.WHITE) {
-        paint.color=color
-        paint.textSize=size
-        paint.typeface=android.graphics.Typeface.create("sans-serif-black",1)
-        paint.setShadowLayer(4f,2f,2f,Color.BLACK)
-        canvas.drawText(value,x,y,paint)
-        paint.clearShadowLayer()
+    init { isFocusable = true; generateLevel() }
+
+    fun pauseGame() {}
+    fun resumeGame() { invalidate() }
+
+    private fun save() {
+        val e = prefs.edit().putInt("level", level).putInt("coins", coins).putBoolean("sound", soundOn)
+        e.apply()
     }
-    private fun button(canvas: Canvas, value: String, l: Float, t: Float, r: Float, b: Float) {
-        paint.color=0xFFE52D3A.toInt()
-        canvas.drawRoundRect(l,t,r,b,18f,18f,paint)
-        label(canvas,value,l+20f,(t+b)/2f+9f,23f)
+
+    private fun generateLevel() {
+        gridSize = if (level < 4) 5 else 6
+        val target = (11 + level * 2).coerceAtMost(29)
+        var chosen = mutableListOf<ArrowTile>()
+        var attempt = 0
+        while (attempt < 250) {
+            val random = Random(level * 971 + attempt * 31)
+            val cells = (0 until gridSize * gridSize).shuffled(random).take(target)
+            val candidate = cells.mapIndexed { i, n -> ArrowTile(i, n % gridSize, n / gridSize, random.nextInt(4)) }.toMutableList()
+            if (isSolvable(candidate)) { chosen = candidate; break }
+            attempt++
+        }
+        if (chosen.isEmpty()) {
+            var id = 0
+            for (y in 0 until gridSize) for (x in 0 until gridSize) {
+                if ((x + y) % 2 == 0 && id < target) {
+                    val d = when { x == 0 -> 3; x == gridSize - 1 -> 1; y == 0 -> 0; else -> 2 }
+                    chosen.add(ArrowTile(id++, x, y, d))
+                }
+            }
+        }
+        board = chosen
+        history.clear()
+        moves = 0
+        hints = 3
+        lastHint = -1
+        levelWon = false
+        message = "Tap an arrow with a clear path"
+        best = prefs.getInt("best_" + level, 0)
+        invalidate()
     }
+
+    private fun isSolvable(input: List<ArrowTile>): Boolean {
+        val left = input.toMutableList()
+        var changed = true
+        while (changed) {
+            changed = false
+            val ready = left.filter { canExit(it, left) }
+            if (ready.isNotEmpty()) { left.removeAll(ready.toSet()); changed = true }
+        }
+        return left.isEmpty()
+    }
+
+    private fun canExit(tile: ArrowTile, tiles: List<ArrowTile>): Boolean {
+        val dx = intArrayOf(0, 1, 0, -1)[tile.dir]
+        val dy = intArrayOf(-1, 0, 1, 0)[tile.dir]
+        var x = tile.x + dx
+        var y = tile.y + dy
+        while (x in 0 until gridSize && y in 0 until gridSize) {
+            if (tiles.any { it.x == x && it.y == y }) return false
+            x += dx; y += dy
+        }
+        return true
+    }
+
+    private fun removeTile(tile: ArrowTile) {
+        history.addLast(board.toList())
+        if (history.size > 20) history.removeFirst()
+        board.removeAll { it.id == tile.id }
+        moves++
+        coins += 2
+        message = "Nice move! +2 coins"
+        lastHint = -1
+        if (board.isEmpty()) {
+            levelWon = true
+            screen = 2
+            val old = prefs.getInt("best_" + level, 0)
+            val score = moves
+            if (old == 0 || score < old) prefs.edit().putInt("best_" + level, score).apply()
+            coins += 25 + level * 2
+            message = "Puzzle solved!"
+            save()
+        }
+        invalidate()
+    }
+
+    private fun rounded(c: Canvas, l: Float, t: Float, r: Float, b: Float, radius: Float, color: Int, stroke: Int? = null, sw: Float = 1f) {
+        p.color = color; p.style = Paint.Style.FILL; p.shader = null; p.clearShadowLayer()
+        c.drawRoundRect(l,t,r,b,radius,radius,p)
+        if (stroke != null) { p.color=stroke; p.style=Paint.Style.STROKE; p.strokeWidth=sw; c.drawRoundRect(l,t,r,b,radius,radius,p); p.style=Paint.Style.FILL }
+    }
+
+    private fun text(c: Canvas, s: String, x: Float, y: Float, size: Float, color: Int = white, align: Paint.Align = Paint.Align.LEFT, bold: Boolean = false) {
+        p.shader = null; p.style = Paint.Style.FILL; p.color = color; p.textSize = size
+        p.textAlign = align; p.typeface = Typeface.create(if (bold) "sans-serif-black" else "sans-serif-medium", if (bold) Typeface.BOLD else Typeface.NORMAL)
+        p.clearShadowLayer(); p.setShadowLayer(3f, 0f, 2f, Color.BLACK)
+        c.drawText(s,x,y,p); p.clearShadowLayer()
+    }
+
     override fun onDraw(canvas: Canvas) {
-        val w=width.toFloat()
-        val h=height.toFloat()
-        if(state.screen==1) {
-            paint.color=0xCC101820.toInt()
-            canvas.drawRoundRect(18f,18f,250f,112f,18f,18f,paint)
-            label(canvas,state.speed.toInt().toString()+" KM/H",38f,70f,36f,if(state.speed>150) Color.RED else Color.WHITE)
-            label(canvas,"RPM "+(state.speed*42).toInt(),40f,98f,16f)
-            paint.color=0xCC101820.toInt()
-            canvas.drawRoundRect(w-165f,18f,w-18f,82f,18f,18f,paint)
-            label(canvas,if(state.paused) "RESUME" else "Ⅱ PAUSE",w-145f,59f,22f)
-            label(canvas,"COINS "+state.coins,w-190f,h-25f,20f,Color.YELLOW)
-            label(canvas,"DISTANCE "+(state.distance/1000f).toString().take(4)+" KM",22f,h-24f,18f)
-            label(canvas,"OLD MAN: HA HA!",w*.42f,62f,24f,Color.YELLOW)
-            if(state.speed>200f) label(canvas,"EXTREME BLACK ROAD MODE",w*.35f,100f,22f,Color.RED)
-            if(state.paused) {
-                paint.color=0xDD101820.toInt()
-                canvas.drawRoundRect(w*.32f,h*.32f,w*.68f,h*.68f,22f,22f,paint)
-                label(canvas,"PAUSED",w*.43f,h*.48f,36f)
-                label(canvas,"TAP TO RESUME",w*.38f,h*.57f,22f)
-            }
-        } else {
-            paint.color=0xEE101820.toInt()
-            canvas.drawRoundRect(w*.18f,h*.1f,w*.82f,h*.9f,26f,26f,paint)
-            label(canvas,"BIKE RED PULL",w*.32f,h*.25f,40f,0xFFFF5555.toInt())
-            if(state.screen==0) {
-                label(canvas,"3D HIGHWAY RIDE",w*.38f,h*.34f,22f)
-                button(canvas,"PLAY",w*.36f,h*.43f,w*.64f,h*.57f)
-                button(canvas,"BIKE SHOP",w*.36f,h*.62f,w*.64f,h*.76f)
-                label(canvas,"COINS "+state.coins,w*.43f,h*.84f,20f,Color.YELLOW)
-            } else {
-                label(canvas,state.names[state.bike],w*.38f,h*.43f,28f)
-                label(canvas,"PRICE "+state.prices[state.bike]+" COINS",w*.37f,h*.52f,20f)
-                button(canvas,"NEXT BIKE",w*.35f,h*.59f,w*.65f,h*.70f)
-                button(canvas,if(state.unlocked.contains(state.bike.toString())) "SELECT" else "UNLOCK",w*.35f,h*.72f,w*.65f,h*.83f)
-                label(canvas,"BACK",w*.20f,h*.85f,18f)
-            }
+        super.onDraw(canvas)
+        val w = width.toFloat(); val h = height.toFloat()
+        if (w <= 0f || h <= 0f) return
+        p.shader = LinearGradient(0f,0f,w,h,bg1,bg2,Shader.TileMode.CLAMP)
+        canvas.drawRect(0f,0f,w,h,p); p.shader = null
+        drawAmbient(canvas,w,h)
+        when (screen) {
+            0 -> drawHome(canvas,w,h)
+            1 -> drawGame(canvas,w,h)
+            else -> drawWin(canvas,w,h)
         }
-        postInvalidateDelayed(33)
+        pulse += 0.035f
+        postInvalidateDelayed(40)
     }
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        val x=event.x
-        val y=event.y
-        val w=width.toFloat()
-        val h=height.toFloat()
-        if(event.action==MotionEvent.ACTION_DOWN) {
-            when(state.screen) {
-                0 -> if(y>h*.40f && y<h*.59f) { state.screen=1;state.speed=0f;state.distance=0f }
-                     else if(y>h*.60f && y<h*.78f) state.screen=2
-                2 -> if(y>h*.57f && y<h*.71f) state.bike=(state.bike+1)%state.names.size
-                     else if(y>h*.71f && y<h*.86f) {
-                         val id=state.bike.toString()
-                         if(state.unlocked.contains(id)) state.save()
-                         else if(state.coins>=state.prices[state.bike]) {
-                             state.coins-=state.prices[state.bike]
-                             state.unlocked.add(id)
-                             state.save()
-                         }
-                     } else if(x<w*.3f) state.screen=0
-                1 -> if(x>w-180f && y<120f) state.paused=!state.paused
-                     else if(state.paused) state.paused=false
-                     else state.holding=true
+
+    private fun drawAmbient(c: Canvas,w:Float,h:Float) {
+        for (i in 0..7) {
+            val x = (w * (i + 1) / 9f) + sin(pulse + i) * 12f * density
+            val y = (h * ((i * 37 % 83) + 8) / 100f)
+            p.color = Color.argb(25,80,210,255); p.style=Paint.Style.FILL
+            c.drawCircle(x,y,(3f + (i%3))*density,p)
+        }
+        p.color=Color.argb(18,90,220,255); p.style=Paint.Style.STROKE; p.strokeWidth=1.2f*density
+        c.drawCircle(w*.5f,h*.42f,w*.39f,p); p.style=Paint.Style.FILL
+    }
+
+    private fun drawLogo(c:Canvas,w:Float,y:Float) {
+        val cx=w*.5f
+        rounded(c,cx-34*density,y-35*density,cx+34*density,y+33*density,19*density,Color.rgb(22,55,92),cyan,2*density)
+        drawArrow(c,cx,y-1*density,24*density,1,cyan,5*density)
+        text(c,"ARROW",cx,y+68*density,35*density,white,Paint.Align.CENTER,true)
+        text(c,"ESCAPE  •  PUZZLE",cx,y+92*density,12*density,cyan,Paint.Align.CENTER,true)
+    }
+
+    private fun drawHome(c:Canvas,w:Float,h:Float) {
+        drawLogo(c,w,h*.19f)
+        text(c,"A smart little brain challenge",w*.5f,h*.19f+120*density,14*density,muted,Paint.Align.CENTER)
+        val bw=min(w*.68f,310*density); val x=(w-bw)*.5f
+        bigButton(c,"PLAY NOW",x,h*.53f,x+bw,h*.53f+55*density,cyan,Color.rgb(7,35,58))
+        bigButton(c,"LEVEL SELECT",x,h*.53f+70*density,x+bw,h*.53f+119*density,Color.rgb(48,73,121),white)
+        bigButton(c,if(soundOn) "SOUND  ON" else "SOUND  OFF",x,h*.53f+134*density,x+bw,h*.53f+181*density,Color.rgb(35,51,84),white)
+        text(c,"COINS  ◆  "+coins,w*.5f,h*.53f+220*density,16*density,gold,Paint.Align.CENTER,true)
+        text(c,"Slide every arrow out. Don't let them block each other.",w*.5f,h-25*density,11*density,muted,Paint.Align.CENTER)
+    }
+
+    private fun bigButton(c:Canvas,label:String,l:Float,t:Float,r:Float,b:Float,color:Int,txt:Int) {
+        rounded(c,l,t+4*density,r,b+4*density,15*density,Color.argb(90,0,0,0))
+        rounded(c,l,t,r,b,15*density,color,Color.argb(100,255,255,255),1*density)
+        text(c,label,(l+r)*.5f,(t+b)*.5f+6*density,16*density,txt,Paint.Align.CENTER,true)
+    }
+
+    private fun drawGame(c:Canvas,w:Float,h:Float) {
+        text(c,"ARROW ESCAPE",20*density,34*density,19*density,white,bold=true)
+        text(c,"LEVEL "+level,w*.5f,34*density,15*density,cyan,Paint.Align.CENTER,true)
+        text(c,"◆ "+coins,w-20*density,34*density,15*density,gold,Paint.Align.RIGHT,true)
+        rounded(c,16*density,49*density,w-16*density,82*density,12*density,Color.rgb(22,38,70))
+        text(c,message,w*.5f,70*density,11*density,muted,Paint.Align.CENTER)
+        val available = min(w-34*density,h*.62f)
+        cell = available / gridSize
+        val boardSize=cell*gridSize
+        boardLeft=(w-boardSize)*.5f
+        boardTop=(h-boardSize)*.49f
+        rounded(c,boardLeft-8*density,boardTop-8*density,boardLeft+boardSize+8*density,boardTop+boardSize+8*density,19*density,Color.rgb(11,24,49),Color.rgb(60,93,145),1.4f*density)
+        for(y in 0 until gridSize) for(x in 0 until gridSize) {
+            val l=boardLeft+x*cell; val t=boardTop+y*cell
+            rounded(c,l+2*density,t+2*density,l+cell-2*density,t+cell-2*density,8*density,Color.rgb(23,42,72),Color.argb(55,120,170,220),.7f*density)
+        }
+        for(tile in board) drawTile(c,tile)
+        val rowY=boardTop+boardSize+27*density
+        text(c,"MOVES  "+moves,rowY*0f+20*density,rowY,12*density,muted,bold=true)
+        text(c,"LEFT  "+board.size,w-20*density,rowY,12*density,cyan,Paint.Align.RIGHT,true)
+        val btnY=h-66*density
+        val gap=9*density; val bw=(w-40*density-2*gap)/3f
+        smallButton(c,"HINT",20*density,btnY,20*density+bw,btnY+43*density,gold)
+        smallButton(c,"UNDO",20*density+bw+gap,btnY,20*density+2*bw+gap,btnY+43*density,Color.rgb(66,105,168))
+        smallButton(c,"RESTART",20*density+2*(bw+gap),btnY,w-20*density,btnY+43*density,Color.rgb(66,105,168))
+    }
+
+    private fun drawTile(c:Canvas,tile:ArrowTile) {
+        val l=boardLeft+tile.x*cell+4*density
+        val t=boardTop+tile.y*cell+4*density
+        val r=boardLeft+(tile.x+1)*cell-4*density
+        val b=boardTop+(tile.y+1)*cell-4*density
+        val base=tileColors[(tile.x+tile.y+level)%tileColors.size]
+        val dark=Color.rgb((Color.red(base)*.48f).toInt(),(Color.green(base)*.48f).toInt(),(Color.blue(base)*.55f).toInt())
+        rounded(c,l,t+4*density,r,b+4*density,9*density,Color.rgb(5,12,27))
+        rounded(c,l,t,r,b,9*density,base,Color.argb(140,255,255,255),1*density)
+        p.shader=LinearGradient(l,t,r,b,Color.argb(90,255,255,255),dark,Shader.TileMode.CLAMP)
+        c.drawRoundRect(l+2*density,t+2*density,r-2*density,b-2*density,8*density,8*density,p)
+        p.shader=null
+        if(tile.id==lastHint) {
+            p.color=gold;p.style=Paint.Style.STROKE;p.strokeWidth=3*density
+            c.drawRoundRect(l-2*density,t-2*density,r+2*density,b+2*density,10*density,10*density,p);p.style=Paint.Style.FILL
+        }
+        drawArrow(c,(l+r)*.5f,(t+b)*.5f,cell*.28f,tile.dir,Color.WHITE, max(2.4f*density,cell*.065f))
+    }
+
+    private fun drawArrow(c:Canvas,cx:Float,cy:Float,size:Float,dir:Int,color:Int,stroke:Float) {
+        val angle=dir*PI/2.0
+        val dx=cos(angle).toFloat(); val dy=sin(angle).toFloat()
+        val px=-dy; val py=dx
+        val tailX=cx-dx*size*.58f; val tailY=cy-dy*size*.58f
+        val headX=cx+dx*size*.62f; val headY=cy+dy*size*.62f
+        p.color=color;p.style=Paint.Style.STROKE;p.strokeWidth=stroke;p.strokeCap=Paint.Cap.ROUND;p.strokeJoin=Paint.Join.ROUND
+        c.drawLine(tailX,tailY,headX,headY,p)
+        path.reset()
+        path.moveTo(headX-dx*size*.52f+px*size*.38f,headY-dy*size*.52f+py*size*.38f)
+        path.lineTo(headX,headY)
+        path.lineTo(headX-dx*size*.52f-px*size*.38f,headY-dy*size*.52f-py*size*.38f)
+        c.drawPath(path,p)
+        p.style=Paint.Style.FILL
+    }
+
+    private fun smallButton(c:Canvas,label:String,l:Float,t:Float,r:Float,b:Float,color:Int) {
+        rounded(c,l,t,r,b,12*density,color,Color.argb(80,255,255,255),1*density)
+        text(c,label,(l+r)*.5f,(t+b)*.5f+5*density,12*density,white,Paint.Align.CENTER,true)
+    }
+
+    private fun drawWin(c:Canvas,w:Float,h:Float) {
+        drawLogo(c,w,h*.2f)
+        text(c,"PUZZLE COMPLETE!",w*.5f,h*.2f+125*density,23*density,gold,Paint.Align.CENTER,true)
+        text(c,"You cleared every arrow.",w*.5f,h*.2f+155*density,14*density,muted,Paint.Align.CENTER)
+        rounded(c,w*.2f,h*.48f,w*.8f,h*.66f,18*density,Color.rgb(20,43,77),cyan,1.5f*density)
+        text(c,"+"+(25+level*2)+" BONUS COINS",w*.5f,h*.48f+35*density,17*density,gold,Paint.Align.CENTER,true)
+        text(c,"MOVES  "+moves,w*.5f,h*.48f+66*density,13*density,white,Paint.Align.CENTER)
+        bigButton(c,"NEXT LEVEL",w*.22f,h*.72f,w*.78f,h*.72f+50*density,cyan,Color.rgb(7,35,58))
+        bigButton(c,"MAIN MENU",w*.22f,h*.72f+64*density,w*.78f,h*.72f+111*density,Color.rgb(48,73,121),white)
+    }
+
+    private fun hit(l:Float,t:Float,r:Float,b:Float,x:Float,y:Float)=x in l..r && y in t..b
+
+    override fun onTouchEvent(event:MotionEvent):Boolean {
+        if(event.action!=MotionEvent.ACTION_UP) return true
+        val x=event.x; val y=event.y; val w=width.toFloat(); val h=height.toFloat()
+        when(screen) {
+            0 -> {
+                val x0=w*.16f; val x1=w*.84f
+                if(hit(x0,h*.53f,x1,h*.53f+60*density,x,y)) { screen=1;generateLevel() }
+                else if(hit(x0,h*.53f+68*density,x1,h*.53f+126*density,x,y)) { screen=1;level=1;generateLevel() }
+                else if(hit(x0,h*.53f+130*density,x1,h*.53f+190*density,x,y)) { soundOn=!soundOn;save() }
             }
-            invalidate()
-            return true
+            1 -> {
+                val boardSize=cell*gridSize
+                val btnY=h-66*density
+                val gap=9*density; val bw=(w-40*density-2*gap)/3f
+                if(y>=btnY && y<=btnY+50*density) {
+                    when {
+                        x<20*density+bw -> {
+                            if(hints>0) {
+                                val ready=board.firstOrNull { canExit(it,board) }
+                                if(ready!=null) { lastHint=ready.id;hints--;message="Hint: this arrow can escape" }
+                                else message="No safe move found"
+                            } else if(coins>=15) {
+                                coins-=15
+                                val ready=board.firstOrNull { canExit(it,board) }
+                                if(ready!=null) { lastHint=ready.id;message="Hint unlocked with 15 coins" }
+                                save()
+                            } else message="Not enough coins for a hint"
+                        }
+                        x<20*density+2*bw+gap -> {
+                            if(history.isNotEmpty()) { board=history.removeLast().toMutableList();moves=(moves-1).coerceAtLeast(0);message="Last move undone";levelWon=false }
+                            else message="Nothing to undo"
+                        }
+                        else -> generateLevel()
+                    }
+                } else if(x in boardLeft..(boardLeft+boardSize) && y in boardTop..(boardTop+boardSize)) {
+                    val gx=((x-boardLeft)/cell).toInt(); val gy=((y-boardTop)/cell).toInt()
+                    val tile=board.firstOrNull { it.x==gx && it.y==gy }
+                    if(tile!=null) {
+                        if(canExit(tile,board)) removeTile(tile)
+                        else { message="Blocked! Clear the arrow in its path first";lastHint=-1 }
+                    }
+                }
+            }
+            2 -> {
+                if(y>h*.70f && y<h*.72f+58*density) { level++;save();screen=1;generateLevel() }
+                else if(y>h*.72f+60*density) { screen=0;save() }
+            }
         }
-        if(event.action==MotionEvent.ACTION_UP || event.action==MotionEvent.ACTION_CANCEL) {
-            state.holding=false
-            return true
-        }
+        invalidate()
         return true
     }
 }
