@@ -106,7 +106,7 @@ private object Levels {
                     val yy=y+(if((k+row+id+index)%2==0) -amp else amp)
                     V(x,yy)
                 }
-                val points=if(toRight) listOf(V(x0,y+amp*.35f))+zig+listOf(V(x1,y+(if((turns+row+id)%2==0) -amp else amp))) else listOf(V(x1,y+amp*.35f))+zig.asReversed().map { V(x1-(it.x-x0),it.y) }+listOf(V(x0,y+(if((turns+row+id)%2==0) -amp else amp)))
+                val points=if(toRight) listOf(V(x0,y+amp*.35f))+zig+listOf(V(x1,y+(if((turns+row+id)%2==0) -amp else amp))) else listOf(V(x1,y+amp*.35f))+zig.map { V(x1-(it.x-x0),it.y) }+listOf(V(x0,y+(if((turns+row+id)%2==0) -amp else amp)))
                 val exit=points.last()
                 val dir=if(toRight) V(1f,0f) else V(-1f,0f)
                 ArrowPath(nextId++,points,exit,dir)
