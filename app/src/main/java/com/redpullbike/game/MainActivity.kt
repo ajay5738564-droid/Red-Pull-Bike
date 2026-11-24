@@ -272,19 +272,18 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         val secondsLeft = ((timeLimitMs - (SystemClock.uptimeMillis() - levelStartMs)).coerceAtLeast(0L) / 1000L)
         text(c,"TIME  "+secondsLeft+"s",w-20*density,59*density,11*density,if(secondsLeft<15) Color.rgb(255,100,120) else gold,Paint.Align.RIGHT,true)
         text(c,message,w*.5f,83*density,10*density,muted,Paint.Align.CENTER)
-        val available = (min(w-34*density,h*.50f) * boardZoom).coerceAtMost(w-20*density)
-        cell = available / gridSize
-        val boardSize=cell*gridSize
-        boardLeft=(w-boardSize)*.5f
-        boardTop=(h-boardSize)*.42f
-        p.color=Color.argb(95,8,19,42);p.style=Paint.Style.FILL;c.drawRect(boardLeft-5*density,boardTop-5*density,boardLeft+boardSize+5*density,boardTop+boardSize+5*density,p)
-        p.color=Color.argb(70,60,226,238);p.style=Paint.Style.STROKE;p.strokeWidth=1*density;c.drawRect(boardLeft-5*density,boardTop-5*density,boardLeft+boardSize+5*density,boardTop+boardSize+5*density,p);p.style=Paint.Style.FILL
-        for(y in 0 until gridSize) for(x in 0 until gridSize) {
+        val baseCell = min((w - 24*density) / gridWidth, (h*.52f) / gridHeight)
+        cell = baseCell * boardZoom
+        boardWidth = cell * gridWidth
+        boardHeight = cell * gridHeight
+        boardLeft = (w-boardWidth)*.5f + panX
+        boardTop = (h-boardHeight)*.42f + panY
+        for(y in 0 until gridHeight) for(x in 0 until gridWidth) {
             p.color=Color.argb(35,140,180,220); p.style=Paint.Style.FILL
             c.drawCircle(boardLeft+(x+.5f)*cell,boardTop+(y+.5f)*cell,1.4f*density,p)
         }
         for(tile in board) drawTile(c,tile)
-        val rowY=boardTop+boardSize+27*density
+        val rowY=boardTop+boardHeight+27*density
         text(c,"MOVES  "+moves,rowY*0f+20*density,rowY,12*density,muted,bold=true)
         text(c,"LEFT  "+board.size,w-20*density,rowY,12*density,cyan,Paint.Align.RIGHT,true)
         val btnY=h-66*density
@@ -295,10 +294,10 @@ private class ArrowPuzzleView(context: Context) : View(context) {
     }
 
     private fun drawTile(c:Canvas,tile:ArrowTile) {
-        val l=boardLeft+tile.x*cell+4*density
-        val t=boardTop+tile.y*cell+4*density
-        val r=boardLeft+(tile.x+1)*cell-4*density
-        val b=boardTop+(tile.y+1)*cell-4*density
+        val l=boardLeft+tile.x*cell+1*density
+        val t=boardTop+tile.y*cell+1*density
+        val r=boardLeft+(tile.x+1)*cell-1*density
+        val b=boardTop+(tile.y+1)*cell-1*density
         val base=tileColors[(tile.x+tile.y+level)%tileColors.size]
         if(tile.id==lastHint) {
             p.color=Color.argb(65,255,198,76);p.style=Paint.Style.FILL
@@ -316,7 +315,7 @@ private class ArrowPuzzleView(context: Context) : View(context) {
             cy += intArrayOf(-1,0,1,0)[tile.dir] * bump
             if (progress >= 1f) collisionTileId = -1 else postInvalidateDelayed(16)
         }
-        drawArrow(c,cx,cy,cell*.235f,tile.dir,base, max(1.25f*density,cell*.027f))
+        drawArrow(c,cx,cy,cell*.405f,tile.dir,base, max(1.4f*density,cell*.055f))
     }
 
     private fun drawArrow(c:Canvas,cx:Float,cy:Float,size:Float,dir:Int,color:Int,stroke:Float) {
@@ -375,7 +374,6 @@ private class ArrowPuzzleView(context: Context) : View(context) {
                 else if(hit(x0,h*.53f+130*density,x1,h*.53f+190*density,x,y)) { soundOn=!soundOn;save() }
             }
             1 -> {
-                val boardSize=cell*gridSize
                 val btnY=h-66*density
                 val gap=9*density; val bw=(w-40*density-2*gap)/3f
                 if(y>=btnY && y<=btnY+50*density) {
@@ -398,7 +396,7 @@ private class ArrowPuzzleView(context: Context) : View(context) {
                         }
                         else -> generateLevel()
                     }
-                } else if(x in boardLeft..(boardLeft+boardSize) && y in boardTop..(boardTop+boardSize)) {
+                } else if(x in boardLeft..(boardLeft+boardWidth) && y in boardTop..(boardTop+boardHeight)) {
                     val gx=((x-boardLeft)/cell).toInt(); val gy=((y-boardTop)/cell).toInt()
                     val tile=board.firstOrNull { it.x==gx && it.y==gy }
                     if(tile!=null) {
