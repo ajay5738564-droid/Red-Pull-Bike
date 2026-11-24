@@ -82,9 +82,10 @@ fun UnityBottomBanner() {
     var bannerAd by remember { mutableStateOf<BannerAd?>(null) }
 
     LaunchedEffect(Unit) {
-        repeat(80) {
-            if (UnityAdsController.initialized) return@repeat
+        var attempts = 0
+        while (!UnityAdsController.initialized && attempts < 80) {
             delay(250)
+            attempts++
         }
         if (UnityAdsController.initialized) {
             val config = BannerLoadConfiguration.Builder(
