@@ -127,7 +127,7 @@ private object Levels {
             }
             paths.addAll(pointsForRow)
         }
-        val diff=when(id){in 1..10->"Hard";in 11..50->"Very Hard";in 51..150->"Expert";in 151..300->"Master";else->"Extreme"}
+        val diff=when(id){in 1..50->"Very Hard";in 51..150->"Expert";in 151..300->"Master";else->"Extreme"}
         return PuzzleLevel(id,cols,rows,paths,diff,names[artIndex])
     }
 }
