@@ -324,7 +324,7 @@ private class ArrowPuzzleView(context: Context) : View(context) {
             cy += intArrayOf(-1,0,1,0)[tile.dir] * bump
             if (progress >= 1f) { collisionTileId = -1; collisionBlockerId = -1 } else postInvalidateDelayed(16)
         }
-        drawArrow(c,cx,cy,cell*.405f,tile.dir,base, max(1.4f*density,cell*.055f))
+        drawArrow(c,cx,cy,cell*.70f,tile.dir,base, max(1.5f*density,cell*.065f))
     }
 
     private fun drawArrow(c:Canvas,cx:Float,cy:Float,size:Float,dir:Int,color:Int,stroke:Float) {
