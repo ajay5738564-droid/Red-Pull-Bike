@@ -4,7 +4,11 @@ import android.app.Activity
 import android.os.Bundle
 import android.content.Context
 import android.graphics.*
+import android.media.AudioManager
+import android.media.ToneGenerator
+import android.os.SystemClock
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import kotlin.math.*
 import kotlin.random.Random
@@ -30,6 +34,19 @@ private class ArrowPuzzleView(context: Context) : View(context) {
     private val p = Paint(3)
     private val path = Path()
     private val density = resources.displayMetrics.density
+    private val tone = ToneGenerator(AudioManager.STREAM_MUSIC, 65)
+    private var boardZoom = 1f
+    private var collisionTileId = -1
+    private var collisionStartMs = 0L
+    private var levelStartMs = SystemClock.uptimeMillis()
+    private var timeLimitMs = 120_000L
+    private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            boardZoom = (boardZoom * detector.scaleFactor).coerceIn(0.72f, 1.30f)
+            invalidate()
+            return true
+        }
+    })
     private var screen = 0
     private var level = prefs.getInt("level", 1).coerceIn(1, 10)
     private var coins = prefs.getInt("coins", 120)
@@ -65,6 +82,13 @@ private class ArrowPuzzleView(context: Context) : View(context) {
 
     fun pauseGame() {}
     fun resumeGame() { invalidate() }
+    private fun playSfx(toneType: Int) {
+        if (soundOn) tone.startTone(toneType, 110)
+    }
+    override fun onDetachedFromWindow() {
+        tone.release()
+        super.onDetachedFromWindow()
+    }
 
     private fun save() {
         val e = prefs.edit().putInt("level", level).putInt("coins", coins).putInt("score", score).putBoolean("sound", soundOn)
@@ -72,17 +96,31 @@ private class ArrowPuzzleView(context: Context) : View(context) {
     }
 
     private fun generateLevel() {
-        gridSize = 5
-        val target = (9 + level).coerceAtMost(19)
+        gridSize = when (level) {
+            in 1..2 -> 5
+            in 3..5 -> 6
+            in 6..8 -> 7
+            else -> 8
+        }
+        val target = when (level) {
+            1 -> 10; 2 -> 12; 3 -> 15; 4 -> 18; 5 -> 21
+            6 -> 24; 7 -> 27; 8 -> 30; 9 -> 33; else -> 36
+        }
         var chosen = mutableListOf<ArrowTile>()
+        var fallbackCandidate = mutableListOf<ArrowTile>()
+        val maxInitialSafe = when (level) { in 1..2 -> 4; in 3..5 -> 3; in 6..8 -> 2; else -> 1 }
         var attempt = 0
-        while (attempt < 2500) {
+        while (attempt < 8000) {
             val random = Random(level * 971 + attempt * 31)
             val cells = (0 until gridSize * gridSize).shuffled(random).take(target)
             val candidate = cells.mapIndexed { i, n -> ArrowTile(i, n % gridSize, n / gridSize, random.nextInt(4)) }.toMutableList()
-            if (isSolvable(candidate)) { chosen = candidate; break }
+            if (isSolvable(candidate)) {
+                if (fallbackCandidate.isEmpty()) fallbackCandidate = candidate
+                if (candidate.count { canExit(it, candidate) } <= maxInitialSafe) { chosen = candidate; break }
+            }
             attempt++
         }
+        if (chosen.isEmpty()) chosen = fallbackCandidate
         if (chosen.isEmpty()) {
             val fallback = mutableListOf<ArrowTile>()
             val perimeter = mutableListOf<Triple<Int,Int,Int>>()
@@ -97,7 +135,13 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         history.clear()
         moves = 0
         hearts = 3
-        hints = 3
+        hints = when (level) { in 1..2 -> 3; in 3..5 -> 2; in 6..8 -> 1; else -> 0 }
+        levelStartMs = SystemClock.uptimeMillis()
+        timeLimitMs = when (level) {
+            1 -> 120_000L; 2 -> 110_000L; 3 -> 100_000L; 4 -> 95_000L; 5 -> 90_000L
+            6 -> 85_000L; 7 -> 80_000L; 8 -> 75_000L; 9 -> 70_000L; else -> 65_000L
+        }
+        collisionTileId = -1
         lastHint = -1
         levelWon = false
         message = "Tap an arrow with a clear path"
@@ -135,7 +179,9 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         moves++
         message = "Correct arrow! Keep going"
         lastHint = -1
+        playSfx(ToneGenerator.TONE_PROP_ACK)
         if (board.isEmpty()) {
+            playSfx(ToneGenerator.TONE_PROP_BEEP2)
             levelWon = true
             screen = 2
             val old = prefs.getInt("best_" + level, 0)
@@ -169,6 +215,11 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         p.shader = LinearGradient(0f,0f,w,h,bg1,bg2,Shader.TileMode.CLAMP)
         canvas.drawRect(0f,0f,w,h,p); p.shader = null
         drawAmbient(canvas,w,h)
+        if (screen == 1 && SystemClock.uptimeMillis() - levelStartMs >= timeLimitMs) {
+            screen = 3
+            message = "Time ran out! Try again."
+            playSfx(ToneGenerator.TONE_PROP_NACK)
+        }
         when (screen) {
             0 -> drawHome(canvas,w,h)
             1 -> drawGame(canvas,w,h)
@@ -221,13 +272,16 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         text(c,"◆ "+coins,w-20*density,34*density,15*density,gold,Paint.Align.RIGHT,true)
         text(c,"♥ ".repeat(hearts)+"♡ ".repeat(3-hearts),w*.5f,59*density,17*density,Color.rgb(255,91,125),Paint.Align.CENTER,true)
         text(c,"SCORE  "+score,20*density,59*density,11*density,gold)
+        val secondsLeft = ((timeLimitMs - (SystemClock.uptimeMillis() - levelStartMs)).coerceAtLeast(0L) / 1000L)
+        text(c,"TIME  "+secondsLeft+"s",w-20*density,59*density,11*density,if(secondsLeft<15) Color.rgb(255,100,120) else gold,Paint.Align.RIGHT,true)
         text(c,message,w*.5f,83*density,10*density,muted,Paint.Align.CENTER)
-        val available = min(w-34*density,h*.62f)
+        val available = (min(w-34*density,h*.62f) * boardZoom).coerceAtMost(w-20*density)
         cell = available / gridSize
         val boardSize=cell*gridSize
         boardLeft=(w-boardSize)*.5f
         boardTop=(h-boardSize)*.49f
-        rounded(c,boardLeft-5*density,boardTop-5*density,boardLeft+boardSize+5*density,boardTop+boardSize+5*density,15*density,Color.argb(95,8,19,42),Color.argb(70,60,226,238),1*density)
+        p.color=Color.argb(95,8,19,42);p.style=Paint.Style.FILL;c.drawRect(boardLeft-5*density,boardTop-5*density,boardLeft+boardSize+5*density,boardTop+boardSize+5*density,p)
+        p.color=Color.argb(70,60,226,238);p.style=Paint.Style.STROKE;p.strokeWidth=1*density;c.drawRect(boardLeft-5*density,boardTop-5*density,boardLeft+boardSize+5*density,boardTop+boardSize+5*density,p);p.style=Paint.Style.FILL
         for(y in 0 until gridSize) for(x in 0 until gridSize) {
             p.color=Color.argb(35,140,180,220); p.style=Paint.Style.FILL
             c.drawCircle(boardLeft+(x+.5f)*cell,boardTop+(y+.5f)*cell,1.4f*density,p)
@@ -255,7 +309,17 @@ private class ArrowPuzzleView(context: Context) : View(context) {
             p.color=gold;p.style=Paint.Style.STROKE;p.strokeWidth=1.8f*density
             c.drawCircle((l+r)*.5f,(t+b)*.5f,cell*.30f,p);p.style=Paint.Style.FILL
         }
-        drawArrow(c,(l+r)*.5f,(t+b)*.5f,cell*.34f,tile.dir,base, max(2.1f*density,cell*.045f))
+        var cx=(l+r)*.5f
+        var cy=(t+b)*.5f
+        if (tile.id == collisionTileId) {
+            val elapsed = SystemClock.uptimeMillis() - collisionStartMs
+            val progress = (elapsed.toFloat() / 340f).coerceIn(0f,1f)
+            val bump = sin(progress * PI).toFloat() * cell * 0.24f
+            cx += intArrayOf(0,1,0,-1)[tile.dir] * bump
+            cy += intArrayOf(-1,0,1,0)[tile.dir] * bump
+            if (progress >= 1f) collisionTileId = -1 else postInvalidateDelayed(16)
+        }
+        drawArrow(c,cx,cy,cell*.235f,tile.dir,base, max(1.25f*density,cell*.027f))
     }
 
     private fun drawArrow(c:Canvas,cx:Float,cy:Float,size:Float,dir:Int,color:Int,stroke:Float) {
@@ -293,7 +357,7 @@ private class ArrowPuzzleView(context: Context) : View(context) {
     private fun drawGameOver(c:Canvas,w:Float,h:Float) {
         drawLogo(c,w,h*.22f)
         text(c,"NO HEARTS LEFT",w*.5f,h*.22f+125*density,23*density,Color.rgb(255,105,125),Paint.Align.CENTER,true)
-        text(c,"You made a wrong move. Try this level again.",w*.5f,h*.22f+155*density,12*density,muted,Paint.Align.CENTER)
+        text(c,message,w*.5f,h*.22f+155*density,12*density,muted,Paint.Align.CENTER)
         text(c,"LEVEL  "+level+"     SCORE  "+score,w*.5f,h*.49f,15*density,white,Paint.Align.CENTER,true)
         bigButton(c,"RESTART LEVEL",w*.22f,h*.65f,w*.78f,h*.65f+52*density,cyan,Color.rgb(7,35,58))
         bigButton(c,"MAIN MENU",w*.22f,h*.65f+66*density,w*.78f,h*.65f+116*density,Color.rgb(48,73,121),white)
@@ -302,6 +366,8 @@ private class ArrowPuzzleView(context: Context) : View(context) {
     private fun hit(l:Float,t:Float,r:Float,b:Float,x:Float,y:Float)=x in l..r && y in t..b
 
     override fun onTouchEvent(event:MotionEvent):Boolean {
+        scaleDetector.onTouchEvent(event)
+        if(event.pointerCount > 1 || event.action == MotionEvent.ACTION_MOVE) return true
         if(event.action!=MotionEvent.ACTION_UP) return true
         val x=event.x; val y=event.y; val w=width.toFloat(); val h=height.toFloat()
         when(screen) {
@@ -342,8 +408,11 @@ private class ArrowPuzzleView(context: Context) : View(context) {
                         if(canExit(tile,board)) removeTile(tile)
                         else {
                             hearts--
+                            collisionTileId = tile.id
+                            collisionStartMs = SystemClock.uptimeMillis()
+                            playSfx(ToneGenerator.TONE_PROP_NACK)
                             lastHint=-1
-                            message="Wrong arrow! -1 heart"
+                            message="Blocked! -1 heart"
                             if(hearts<=0) screen=3
                         }
                     }
