@@ -1,6 +1,8 @@
 package com.redpullbike.game
 
 import android.os.Bundle
+import android.media.AudioManager
+import android.media.ToneGenerator
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
@@ -115,6 +117,8 @@ private object Levels {
 @Composable
 private fun ArrowEscapeApp() {
     val context = LocalContext.current
+    val tone = remember { ToneGenerator(AudioManager.STREAM_MUSIC, 45) }
+    DisposableEffect(Unit) { onDispose { tone.release() } }
     val prefs = remember { context.getSharedPreferences("arrow_escape_v2", 0) }
     var highest by remember { mutableIntStateOf(prefs.getInt("highest",1).coerceIn(1,50)) }
     var level by remember { mutableIntStateOf(highest) }
@@ -146,7 +150,7 @@ private fun ArrowEscapeApp() {
         "settings" -> SettingsScreen(showGrid,sound,haptics,{showGrid=it;prefs.edit().putBoolean("grid",it).apply()},{sound=it;prefs.edit().putBoolean("sound",it).apply()},{haptics=it;prefs.edit().putBoolean("haptics",it).apply()},{page="home"})
         "game" -> {
             val solved = remaining.isEmpty()
-            LaunchedEffect(solved) { if(solved) { delay(500); page="complete"; completed=maxOf(completed,level); highest=maxOf(highest,(level+1).coerceAtMost(50)); prefs.edit().putInt("completed",completed).putInt("highest",highest).apply() } }
+            LaunchedEffect(solved) { if(solved) { if(sound) tone.startTone(ToneGenerator.TONE_PROP_ACK,120); delay(500); page="complete"; completed=maxOf(completed,level); highest=maxOf(highest,(level+1).coerceAtMost(50)); prefs.edit().putInt("completed",completed).putInt("highest",highest).apply() } }
             GameScreen(puzzle,remaining,lives,hints,hintId,showGrid,message,zoom,pan,bounceId,animating,
                 onZoom={zoom=(zoom*it).coerceIn(.65f,2.3f)},
                 onPan={pan+=it},
@@ -154,8 +158,8 @@ private fun ArrowEscapeApp() {
                     if(animating!=-1 || page!="game") return@GameScreen
                     val arrow=puzzle.paths.firstOrNull { it.id==id } ?: return@GameScreen
                     val isFree = isFree(arrow,puzzle.paths.filter { it.id in remaining && it.id!=id },puzzle.cols,puzzle.rows)
-                    if(isFree) { animating=id; message="" }
-                    else { lives--; bounceId=id; message="Blocked! The arrow bounced back."; if(lives<=0) page="failed" }
+                    if(isFree) { if(sound) tone.startTone(ToneGenerator.TONE_PROP_BEEP,55); animating=id; message="" }
+                    else { if(sound) tone.startTone(ToneGenerator.TONE_PROP_NACK,100); lives--; bounceId=id; message="Blocked! The arrow bounced back."; if(lives<=0) page="failed" }
                 },
                 onHint={ if(hints>0) { val candidate=puzzle.paths.firstOrNull { it.id in remaining && isFree(it,puzzle.paths.filter { p->p.id in remaining && p.id!=it.id },puzzle.cols,puzzle.rows) }; if(candidate!=null){hintId=candidate.id;hints--;message="This arrow has a free path."} else message="No free arrow found." } else message="No hints left." },
                 onGrid={showGrid=!showGrid},onRestart={start(level)},onBack={page="levels"}
@@ -275,14 +279,14 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
                     val pts=arrow.points.map{Offset(ox+it.x*side+arrow.direction.x*shift,oy+it.y*side+arrow.direction.y*shift)}
                     val col=if(arrow.id==hintId) Blue else Navy
                     val path=Path().apply { pts.firstOrNull()?.let{moveTo(it.x,it.y)};pts.drop(1).forEach{lineTo(it.x,it.y)} }
-                    drawPath(path,col,style=Stroke(width=max(1.0.dp.toPx(),side*.032f),cap=StrokeCap.Round,join=PathEffectCorner))
+                    drawPath(path,col,style=Stroke(width=max(.85.dp.toPx(),side*.023f),cap=StrokeCap.Round,join=PathEffectCorner))
                     val end=pts.last()
                     val angle=atan2(arrow.direction.y,arrow.direction.x)
-                    val len=side*.19f; val wing=side*.105f
+                    val len=side*.135f; val wing=side*.072f
                     val tip=Offset(end.x+cos(angle)*len,end.y+sin(angle)*len)
                     val left=Offset(tip.x-cos(angle)*len*.8f+sin(angle)*wing,tip.y-sin(angle)*len*.8f-cos(angle)*wing)
                     val right=Offset(tip.x-cos(angle)*len*.8f-sin(angle)*wing,tip.y-sin(angle)*len*.8f+cos(angle)*wing)
-                    drawLine(col,end,tip,strokeWidth=max(1.25.dp.toPx(),side*.038f),cap=StrokeCap.Round)
+                    drawLine(col,end,tip,strokeWidth=max(.9.dp.toPx(),side*.025f),cap=StrokeCap.Round)
                     val head=Path().apply{moveTo(tip.x,tip.y);lineTo(left.x,left.y);lineTo(right.x,right.y);close()}
                     drawPath(head,col)
                 }
