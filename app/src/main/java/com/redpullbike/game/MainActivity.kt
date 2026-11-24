@@ -19,18 +19,29 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
 class MainActivity : Activity() {
+    private lateinit var glView: GLSurfaceView
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.decorView.systemUiVisibility = 5894 or 1024 or 512 or 4096
         val state = GameState(this)
         val root = FrameLayout(this)
-        val gl = GLSurfaceView(this)
-        gl.setEGLContextClientVersion(2)
-        gl.setRenderer(RoadRenderer(state))
-        gl.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
-        root.addView(gl)
+        glView = GLSurfaceView(this).apply {
+            setEGLContextClientVersion(2)
+            setRenderer(RoadRenderer(state))
+            renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
+            preserveEGLContextOnPause = false
+        }
+        root.addView(glView)
         root.addView(GameHud(this, state))
         setContentView(root)
+    }
+    override fun onPause() {
+        if (::glView.isInitialized) glView.onPause()
+        super.onPause()
+    }
+    override fun onResume() {
+        super.onResume()
+        if (::glView.isInitialized) glView.onResume()
     }
 }
 
@@ -94,7 +105,8 @@ private class RoadRenderer(private val state: GameState) : GLSurfaceView.Rendere
         position = GLES20.glGetAttribLocation(program, "p")
         matrix = GLES20.glGetUniformLocation(program, "m")
         color = GLES20.glGetUniformLocation(program, "c")
-        cube = ByteBuffer.allocateDirect(vertices.size*4).order(ByteOrder.nativeOrder()).asFloatBuffer().put(vertices)
+        cube = ByteBuffer.allocateDirect(vertices.size*4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+        cube.put(vertices)
         cube.position(0)
         GLES20.glClearColor(0.48f,0.75f,0.92f,1f)
     }
@@ -127,14 +139,38 @@ private class RoadRenderer(private val state: GameState) : GLSurfaceView.Rendere
             3 -> floatArrayOf(.7f,.72f,.75f,1f)
             else -> floatArrayOf(.9f,.025f,.04f,1f)
         }
-        draw(0f,.55f,.9f,.65f,.12f,.65f,floatArrayOf(.02f,.02f,.025f,1f))
-        draw(0f,.55f,-.8f,.65f,.12f,.65f,floatArrayOf(.02f,.02f,.025f,1f))
+        ring(0f,.62f,.9f,.47f,floatArrayOf(.025f,.025f,.03f,1f),8f)
+        ring(0f,.62f,-.8f,.47f,floatArrayOf(.025f,.025f,.03f,1f),8f)
+        ring(0f,.62f,.9f,.28f,floatArrayOf(.62f,.66f,.70f,1f),3f)
+        ring(0f,.62f,-.8f,.28f,floatArrayOf(.62f,.66f,.70f,1f),3f)
         draw(0f,.95f,.05f,.32f,.22f,1.55f,floatArrayOf(.16f,.16f,.17f,1f))
         draw(0f,1.25f,-.25f,.9f,.48f,.85f,bikeColor)
         draw(0f,1.55f,-.6f,.3f,.28f,.28f,floatArrayOf(.8f,.85f,.9f,1f))
         draw(0f,1.95f,.1f,.48f,.78f,.45f,floatArrayOf(.08f,.1f,.15f,1f))
         draw(0f,2.48f,.05f,.42f,.42f,.42f,floatArrayOf(.8f,.66f,.53f,1f))
         draw(0f,2.52f,-.12f,.46f,.2f,.45f,floatArrayOf(.03f,.04f,.05f,1f))
+    }
+    private fun ring(x: Float,y: Float,z: Float,r: Float,c: FloatArray,width: Float) {
+        val points = FloatArray(96 * 3)
+        for (i in 0 until 96) {
+            val a = i * (Math.PI * 2.0 / 96.0)
+            points[i*3] = x + kotlin.math.cos(a).toFloat() * r
+            points[i*3+1] = y + kotlin.math.sin(a).toFloat() * r
+            points[i*3+2] = z
+        }
+        val buffer = ByteBuffer.allocateDirect(points.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+        buffer.put(points)
+        buffer.position(0)
+        Matrix.setIdentityM(model,0)
+        Matrix.multiplyMM(mvp,0,view,0,model,0)
+        Matrix.multiplyMM(mvp,0,projection,0,mvp,0)
+        GLES20.glUniformMatrix4fv(matrix,1,false,mvp,0)
+        GLES20.glUniform4fv(color,1,c,0)
+        GLES20.glLineWidth(width)
+        GLES20.glEnableVertexAttribArray(position)
+        GLES20.glVertexAttribPointer(position,3,GLES20.GL_FLOAT,false,0,buffer)
+        GLES20.glDrawArrays(GLES20.GL_LINE_LOOP,0,96)
+        GLES20.glDisableVertexAttribArray(position)
     }
     private fun draw(x: Float,y: Float,z: Float,sx: Float,sy: Float,sz: Float,c: FloatArray) {
         Matrix.setIdentityM(model,0)
