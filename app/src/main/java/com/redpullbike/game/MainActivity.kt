@@ -1,6 +1,7 @@
 package com.redpullbike.game
 
 import android.os.Bundle
+import android.app.Activity
 import android.media.AudioManager
 import android.media.ToneGenerator
 import androidx.activity.ComponentActivity
@@ -35,6 +36,7 @@ private val Pale = Color(0xFFF2F6FA)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        UnityAdsController.initialize(this)
         window.statusBarColor = android.graphics.Color.BLACK
         window.navigationBarColor = android.graphics.Color.BLACK
         setContent { MaterialTheme { ArrowEscapeApp() } }
@@ -154,6 +156,8 @@ private fun ArrowEscapeApp() {
     var pan by remember { mutableStateOf(Offset.Zero) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var completed by remember { mutableIntStateOf(prefs.getInt("completed",0).coerceIn(0,500)) }
+    var adStatus by remember { mutableStateOf("") }
+    val activity = context as? Activity
     val puzzle = remember(level) { Levels.get(level) }
     LaunchedEffect(bounceId) { if(bounceId>=0) { delay(280); bounceId=-1 } }
     LaunchedEffect(animating) { val escaped=animating; if(escaped>=0) { delay(720); remaining=remaining-escaped; hintId=-1; animating=-1 } }
@@ -179,12 +183,43 @@ private fun ArrowEscapeApp() {
                     if(isFree) { if(sound) tone.startTone(ToneGenerator.TONE_PROP_BEEP,55); animating=id; message="" }
                     else { if(sound) tone.startTone(ToneGenerator.TONE_PROP_NACK,100); lives--; bounceId=id; message="Blocked! The arrow bounced back."; if(lives<=0) page="failed" }
                 },
-                onHint={ if(hints>0) { val candidate=puzzle.paths.firstOrNull { it.id in remaining && isFree(it,puzzle.paths.filter { p->p.id in remaining && p.id!=it.id },puzzle.cols,puzzle.rows) }; if(candidate!=null){hintId=candidate.id;hints--;message="This arrow has a free path."} else message="No free arrow found." } else message="No hints left." },
+                onHint={
+                    if(activity==null) message="Ads are unavailable right now."
+                    else {
+                        message="Loading hint ad..."
+                        UnityAdsController.showRewarded(
+                            activity,
+                            UnityAdsController.REWARDED,
+                            onReward={
+                                val candidate=puzzle.paths.firstOrNull { it.id in remaining && isFree(it,puzzle.paths.filter { p->p.id in remaining && p.id!=it.id },puzzle.cols,puzzle.rows) }
+                                if(candidate!=null) { hintId=candidate.id; message="Hint unlocked! This arrow can escape." }
+                                else message="No free arrow found."
+                            },
+                            onUnavailable={ message="Ad unavailable. Please try again later." }
+                        )
+                    }
+                },
                 onGrid={showGrid=!showGrid},onRestart={start(level)},onBack={page="levels"}
             )
         }
         "complete" -> CompleteScreen(level,onNext={if(level<500) start(level+1) else page="home"},onHome={page="home"})
-        "failed" -> ResultScreen("Out of Lives","Think carefully and try again.", "RESTART LEVEL",{start(level)},{page="levels"})
+        "failed" -> FailedScreen(
+            status=adStatus,
+            onWatchAd={
+                if(activity==null) adStatus="Ads are unavailable right now."
+                else {
+                    adStatus="Loading continue ad..."
+                    UnityAdsController.showRewarded(
+                        activity,
+                        UnityAdsController.REWARDED,
+                        onReward={ lives=3; adStatus=""; message="You got 3 more hearts. Keep playing!"; page="game" },
+                        onUnavailable={ adStatus="Ad unavailable. You can restart the level." }
+                    )
+                }
+            },
+            onRetry={ adStatus=""; start(level) },
+            onBack={ adStatus=""; page="levels" }
+        )
     }
 }
 
@@ -331,9 +366,10 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().padding(bottom=14.dp),horizontalArrangement=Arrangement.SpaceEvenly,verticalAlignment=Alignment.CenterVertically) {
-            AssistButton("💡  $hints",onHint); AssistButton("▦",onGrid); AssistButton("↻",onRestart)
+        Row(Modifier.fillMaxWidth().padding(bottom=8.dp),horizontalArrangement=Arrangement.SpaceEvenly,verticalAlignment=Alignment.CenterVertically) {
+            AssistButton("💡  AD",onHint); AssistButton("▦",onGrid); AssistButton("↻",onRestart)
         }
+        UnityBottomBanner()
     }
 }
 private val PathEffectCorner get() = StrokeJoin.Round
@@ -345,6 +381,20 @@ private val PathEffectCorner get() = StrokeJoin.Round
         TextButton(onClick=onHome){Text("Main Menu",color=Color.White)}
     }
 }
+@Composable
+private fun FailedScreen(status:String,onWatchAd:()->Unit,onRetry:()->Unit,onBack:()->Unit) {
+    Column(Modifier.fillMaxSize().background(Color.White).padding(28.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center) {
+        Text("Out of Lives",fontSize=30.sp,fontWeight=FontWeight.Bold,color=Navy)
+        Text("Watch a short video to get 3 more hearts and continue this level.",color=Color.Gray,textAlign=TextAlign.Center)
+        if(status.isNotBlank()) Text(status,color=Blue,textAlign=TextAlign.Center,modifier=Modifier.padding(top=12.dp))
+        Spacer(Modifier.height(24.dp))
+        PrimaryButton("WATCH AD • CONTINUE",onWatchAd)
+        Spacer(Modifier.height(10.dp))
+        SecondaryButton("RESTART LEVEL",onRetry)
+        TextButton(onClick=onBack){Text("Level Select")}
+    }
+}
+
 @Composable private fun ResultScreen(title:String,sub:String,button:String,onRetry:()->Unit,onBack:()->Unit) {
     Column(Modifier.fillMaxSize().background(Color.White).padding(28.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center) {
         Text(title,fontSize=30.sp,fontWeight=FontWeight.Bold,color=Navy); Text(sub,color=Color.Gray); Spacer(Modifier.height(28.dp)); PrimaryButton(button,onRetry); TextButton(onClick=onBack){Text("Level Select")}
