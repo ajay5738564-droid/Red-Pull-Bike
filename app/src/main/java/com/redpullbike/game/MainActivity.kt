@@ -64,7 +64,7 @@ private object Levels {
     )
 
     private val cache = HashMap<Int,PuzzleLevel>()
-    fun get(id:Int):PuzzleLevel = cache.getOrPut(id.coerceIn(1,50)) { make(id.coerceIn(1,50)) }
+    fun get(id:Int):PuzzleLevel = cache.getOrPut(id.coerceIn(1,500)) { make(id.coerceIn(1,500)) }
 
     private fun make(id:Int):PuzzleLevel {
         val artIndex = ((id-1)*7 + (id-1)/3) % silhouettes.size
@@ -77,9 +77,9 @@ private object Levels {
             val right = (if(mirror) 14-span.first else span.second) - wobble
             min(left,right).coerceIn(0,10) to max(left,right).coerceIn(4,14)
         }
-        val tier = when(id) { in 1..5 -> 0; in 6..10 -> 1; in 11..20 -> 2; in 21..35 -> 3; else -> 4 }
-        val cols = 18 + tier*2
-        val rows = 18 + tier*2
+        val tier = ((id-1)/50).coerceAtMost(9)
+        val cols = 18 + tier
+        val rows = 18 + tier
         val sx=(cols-2)/14f
         val sy=(rows-2)/14f
         val paths=ArrayList<ArrowPath>()
@@ -89,7 +89,7 @@ private object Levels {
             val right=1f+span.second*sx
             val y=1f+row*sy
             val width=right-left
-            val chunk=(2.55f - tier*.13f + ((id+row)%3)*.09f).coerceAtLeast(1.85f)
+            val chunk=(2.55f - tier*.065f + ((id+row)%3)*.07f).coerceAtLeast(1.82f)
             val pieces=max(1,ceil(width/chunk).toInt())
             val gap=.16f
             val usable=width-gap*(pieces-1)
@@ -127,7 +127,7 @@ private object Levels {
             }
             paths.addAll(pointsForRow)
         }
-        val diff=when(id){in 1..5->"Hard";in 6..15->"Very Hard";in 16..30->"Expert";else->"Master"}
+        val diff=when(id){in 1..10->"Hard";in 11..50->"Very Hard";in 51..150->"Expert";in 151..300->"Master";else->"Extreme"}
         return PuzzleLevel(id,cols,rows,paths,diff,names[artIndex])
     }
 }
@@ -138,7 +138,7 @@ private fun ArrowEscapeApp() {
     val tone = remember { ToneGenerator(AudioManager.STREAM_MUSIC, 45) }
     DisposableEffect(Unit) { onDispose { tone.release() } }
     val prefs = remember { context.getSharedPreferences("arrow_escape_v2", 0) }
-    var highest by remember { mutableIntStateOf(prefs.getInt("highest",1).coerceIn(1,50)) }
+    var highest by remember { mutableIntStateOf(prefs.getInt("highest",1).coerceIn(1,500)) }
     var level by remember { mutableIntStateOf(highest) }
     var page by remember { mutableStateOf("home") }
     var remaining by remember { mutableStateOf(emptySet<Int>()) }
@@ -153,12 +153,12 @@ private fun ArrowEscapeApp() {
     var bounceId by remember { mutableIntStateOf(-1) }
     var pan by remember { mutableStateOf(Offset.Zero) }
     var zoom by remember { mutableFloatStateOf(1f) }
-    var completed by remember { mutableIntStateOf(prefs.getInt("completed",0)) }
+    var completed by remember { mutableIntStateOf(prefs.getInt("completed",0).coerceIn(0,500)) }
     val puzzle = remember(level) { Levels.get(level) }
     LaunchedEffect(bounceId) { if(bounceId>=0) { delay(280); bounceId=-1 } }
     LaunchedEffect(animating) { val escaped=animating; if(escaped>=0) { delay(720); remaining=remaining-escaped; hintId=-1; animating=-1 } }
     fun start(id:Int) {
-        level=id.coerceIn(1,50); remaining=Levels.get(level).paths.map { it.id }.toSet()
+        level=id.coerceIn(1,500); remaining=Levels.get(level).paths.map { it.id }.toSet()
         lives=3; hints=if(level<=10) 2 else if(level<=30) 1 else 0
         hintId=-1; message=""; animating=-1; pan=Offset.Zero; zoom=1f; page="game"
     }
@@ -168,7 +168,7 @@ private fun ArrowEscapeApp() {
         "settings" -> SettingsScreen(showGrid,sound,haptics,{showGrid=it;prefs.edit().putBoolean("grid",it).apply()},{sound=it;prefs.edit().putBoolean("sound",it).apply()},{haptics=it;prefs.edit().putBoolean("haptics",it).apply()},{page="home"})
         "game" -> {
             val solved = remaining.isEmpty()
-            LaunchedEffect(solved) { if(solved) { if(sound) tone.startTone(ToneGenerator.TONE_PROP_ACK,120); delay(500); page="complete"; completed=maxOf(completed,level); highest=maxOf(highest,(level+1).coerceAtMost(50)); prefs.edit().putInt("completed",completed).putInt("highest",highest).apply() } }
+            LaunchedEffect(solved) { if(solved) { if(sound) tone.startTone(ToneGenerator.TONE_PROP_ACK,120); delay(500); page="complete"; completed=maxOf(completed,level); highest=maxOf(highest,(level+1).coerceAtMost(500)); prefs.edit().putInt("completed",completed).putInt("highest",highest).apply() } }
             GameScreen(puzzle,remaining,lives,hints,hintId,showGrid,message,zoom,pan,bounceId,animating,
                 onZoom={zoom=(zoom*it).coerceIn(.65f,2.3f)},
                 onPan={pan+=it},
@@ -183,7 +183,7 @@ private fun ArrowEscapeApp() {
                 onGrid={showGrid=!showGrid},onRestart={start(level)},onBack={page="levels"}
             )
         }
-        "complete" -> CompleteScreen(level,onNext={if(level<50) start(level+1) else page="home"},onHome={page="home"})
+        "complete" -> CompleteScreen(level,onNext={if(level<500) start(level+1) else page="home"},onHome={page="home"})
         "failed" -> ResultScreen("Out of Lives","Think carefully and try again.", "RESTART LEVEL",{start(level)},{page="levels"})
     }
 }
@@ -217,7 +217,8 @@ private fun pointNearSegment(p:V,a:V,b:V,r:Float):Boolean {
     val dx=b.x-a.x; val dy=b.y-a.y
     val den=dx*dx+dy*dy
     val t=if(den==0f) 0f else (((p.x-a.x)*dx+(p.y-a.y)*dy)/den).coerceIn(0f,1f)
-    return hypot(p.x-(a.x+t*dx),p.y-(a.y+t*dy))<r
+    val ex=p.x-(a.x+t*dx); val ey=p.y-(a.y+t*dy)
+    return ex*ex+ey*ey<r*r
 }
 
 @Composable
@@ -235,7 +236,7 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
     Column(Modifier.fillMaxSize().background(Color.White).padding(18.dp)) {
         Row(verticalAlignment=Alignment.CenterVertically){Text("‹",fontSize=34.sp,color=Blue,modifier=Modifier.clickable{onBack()}); Text("  SELECT LEVEL",fontWeight=FontWeight.Bold,fontSize=22.sp,color=Navy)}
         LazyVerticalGrid(GridCells.Fixed(5),contentPadding=PaddingValues(vertical=18.dp),horizontalArrangement=Arrangement.spacedBy(10.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
-            items(50) { i -> val n=i+1; val unlocked=n<=highest
+            items(500) { i -> val n=i+1; val unlocked=n<=highest
                 Surface(modifier=Modifier.aspectRatio(1f).clickable(enabled=unlocked){onSelect(n)},shape=RoundedCornerShape(12.dp),color=if(n<=completed) Color(0xFFE4F4FF) else if(unlocked) Pale else Color(0xFFF7F7F7)) {
                     Box(contentAlignment=Alignment.Center){Text(if(!unlocked) "🔒" else if(n<=completed) "$n ✓" else "$n",color=if(unlocked) Navy else Color.LightGray,fontWeight=FontWeight.Bold)}
                 }
@@ -317,14 +318,14 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
                     } else arrow.points.map { Offset(ox+it.x*side+arrow.direction.x*shift,oy+it.y*side+arrow.direction.y*shift) }
                     val col=if(arrow.id==hintId) Blue else Navy
                     val path=Path().apply { pts.firstOrNull()?.let{moveTo(it.x,it.y)};pts.drop(1).forEach{lineTo(it.x,it.y)} }
-                    drawPath(path,col,style=Stroke(width=max(.72.dp.toPx(),side*.014f),cap=StrokeCap.Round,join=PathEffectCorner))
+                    drawPath(path,col,style=Stroke(width=max(.85.dp.toPx(),side*.018f),cap=StrokeCap.Round,join=PathEffectCorner))
                     val end=pts.last()
                     val angle=atan2(arrow.direction.y,arrow.direction.x)
                     val len=side*.105f; val wing=side*.052f
                     val tip=Offset(end.x+cos(angle)*len,end.y+sin(angle)*len)
                     val left=Offset(tip.x-cos(angle)*len*.8f+sin(angle)*wing,tip.y-sin(angle)*len*.8f-cos(angle)*wing)
                     val right=Offset(tip.x-cos(angle)*len*.8f-sin(angle)*wing,tip.y-sin(angle)*len*.8f+cos(angle)*wing)
-                    drawLine(col,end,tip,strokeWidth=max(.9.dp.toPx(),side*.025f),cap=StrokeCap.Round)
+                    drawLine(col,end,tip,strokeWidth=max(1.dp.toPx(),side*.028f),cap=StrokeCap.Round)
                     val head=Path().apply{moveTo(tip.x,tip.y);lineTo(left.x,left.y);lineTo(right.x,right.y);close()}
                     drawPath(head,col)
                 }
@@ -340,7 +341,7 @@ private val PathEffectCorner get() = StrokeJoin.Round
 @Composable private fun CompleteScreen(level:Int,onNext:()->Unit,onHome:()->Unit) {
     Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF168BDA),Color(0xFF0758A8)))).padding(28.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center) {
         Text("✦  ✧  ✦",fontSize=38.sp,color=Color.White); Text("Level Complete!",fontSize=30.sp,fontWeight=FontWeight.ExtraBold,color=Color.White); Text("Great job! You cleared the board.",color=Color.White)
-        Spacer(Modifier.height(34.dp)); Button(onClick=onNext,modifier=Modifier.fillMaxWidth().height(56.dp),colors=ButtonDefaults.buttonColors(containerColor=Color.White)){Text(if(level==50) "Finish" else "Next Level",color=Blue)}
+        Spacer(Modifier.height(34.dp)); Button(onClick=onNext,modifier=Modifier.fillMaxWidth().height(56.dp),colors=ButtonDefaults.buttonColors(containerColor=Color.White)){Text(if(level==500) "Finish" else "Next Level",color=Blue)}
         TextButton(onClick=onHome){Text("Main Menu",color=Color.White)}
     }
 }
