@@ -31,10 +31,12 @@ private class ArrowPuzzleView(context: Context) : View(context) {
     private val path = Path()
     private val density = resources.displayMetrics.density
     private var screen = 0
-    private var level = prefs.getInt("level", 1).coerceAtLeast(1)
+    private var level = prefs.getInt("level", 1).coerceIn(1, 10)
     private var coins = prefs.getInt("coins", 120)
     private var soundOn = prefs.getBoolean("sound", true)
     private var moves = 0
+    private var hearts = 3
+    private var score = prefs.getInt("score", 0)
     private var hints = 3
     private var message = "Clear every arrow to solve the puzzle"
     private var board = mutableListOf<ArrowTile>()
@@ -65,16 +67,16 @@ private class ArrowPuzzleView(context: Context) : View(context) {
     fun resumeGame() { invalidate() }
 
     private fun save() {
-        val e = prefs.edit().putInt("level", level).putInt("coins", coins).putBoolean("sound", soundOn)
+        val e = prefs.edit().putInt("level", level).putInt("coins", coins).putInt("score", score).putBoolean("sound", soundOn)
         e.apply()
     }
 
     private fun generateLevel() {
-        gridSize = if (level < 4) 5 else 6
-        val target = (11 + level * 2).coerceAtMost(29)
+        gridSize = 5
+        val target = (9 + level).coerceAtMost(19)
         var chosen = mutableListOf<ArrowTile>()
         var attempt = 0
-        while (attempt < 250) {
+        while (attempt < 2500) {
             val random = Random(level * 971 + attempt * 31)
             val cells = (0 until gridSize * gridSize).shuffled(random).take(target)
             val candidate = cells.mapIndexed { i, n -> ArrowTile(i, n % gridSize, n / gridSize, random.nextInt(4)) }.toMutableList()
@@ -82,17 +84,19 @@ private class ArrowPuzzleView(context: Context) : View(context) {
             attempt++
         }
         if (chosen.isEmpty()) {
-            var id = 0
-            for (y in 0 until gridSize) for (x in 0 until gridSize) {
-                if ((x + y) % 2 == 0 && id < target) {
-                    val d = when { x == 0 -> 3; x == gridSize - 1 -> 1; y == 0 -> 0; else -> 2 }
-                    chosen.add(ArrowTile(id++, x, y, d))
-                }
-            }
+            val fallback = mutableListOf<ArrowTile>()
+            val perimeter = mutableListOf<Triple<Int,Int,Int>>()
+            for (x in 0 until gridSize) perimeter.add(Triple(x,0,0))
+            for (y in 1 until gridSize) perimeter.add(Triple(gridSize-1,y,1))
+            for (x in gridSize-2 downTo 0) perimeter.add(Triple(x,gridSize-1,2))
+            for (y in gridSize-2 downTo 1) perimeter.add(Triple(0,y,3))
+            perimeter.take(target).forEachIndexed { i,v -> fallback.add(ArrowTile(i,v.first,v.second,v.third)) }
+            chosen = fallback
         }
         board = chosen
         history.clear()
         moves = 0
+        hearts = 3
         hints = 3
         lastHint = -1
         levelWon = false
@@ -129,8 +133,7 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         if (history.size > 20) history.removeFirst()
         board.removeAll { it.id == tile.id }
         moves++
-        coins += 2
-        message = "Nice move! +2 coins"
+        message = "Correct arrow! Keep going"
         lastHint = -1
         if (board.isEmpty()) {
             levelWon = true
@@ -138,8 +141,9 @@ private class ArrowPuzzleView(context: Context) : View(context) {
             val old = prefs.getInt("best_" + level, 0)
             val score = moves
             if (old == 0 || score < old) prefs.edit().putInt("best_" + level, score).apply()
-            coins += 25 + level * 2
-            message = "Puzzle solved!"
+            score += 10
+            coins += 10
+            message = "Level clear! +10 points, +10 coins"
             save()
         }
         invalidate()
@@ -168,7 +172,8 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         when (screen) {
             0 -> drawHome(canvas,w,h)
             1 -> drawGame(canvas,w,h)
-            else -> drawWin(canvas,w,h)
+            2 -> drawWin(canvas,w,h)
+            else -> drawGameOver(canvas,w,h)
         }
         pulse += 0.035f
         postInvalidateDelayed(40)
@@ -214,17 +219,18 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         text(c,"ARROW ESCAPE",20*density,34*density,19*density,white,bold=true)
         text(c,"LEVEL "+level,w*.5f,34*density,15*density,cyan,Paint.Align.CENTER,true)
         text(c,"◆ "+coins,w-20*density,34*density,15*density,gold,Paint.Align.RIGHT,true)
-        rounded(c,16*density,49*density,w-16*density,82*density,12*density,Color.rgb(22,38,70))
-        text(c,message,w*.5f,70*density,11*density,muted,Paint.Align.CENTER)
+        text(c,"♥ ".repeat(hearts)+"♡ ".repeat(3-hearts),w*.5f,59*density,17*density,Color.rgb(255,91,125),Paint.Align.CENTER,true)
+        text(c,"SCORE  "+score,20*density,59*density,11*density,gold)
+        text(c,message,w*.5f,83*density,10*density,muted,Paint.Align.CENTER)
         val available = min(w-34*density,h*.62f)
         cell = available / gridSize
         val boardSize=cell*gridSize
         boardLeft=(w-boardSize)*.5f
         boardTop=(h-boardSize)*.49f
-        rounded(c,boardLeft-8*density,boardTop-8*density,boardLeft+boardSize+8*density,boardTop+boardSize+8*density,19*density,Color.rgb(11,24,49),Color.rgb(60,93,145),1.4f*density)
+        rounded(c,boardLeft-5*density,boardTop-5*density,boardLeft+boardSize+5*density,boardTop+boardSize+5*density,15*density,Color.argb(95,8,19,42),Color.argb(70,60,226,238),1*density)
         for(y in 0 until gridSize) for(x in 0 until gridSize) {
-            val l=boardLeft+x*cell; val t=boardTop+y*cell
-            rounded(c,l+2*density,t+2*density,l+cell-2*density,t+cell-2*density,8*density,Color.rgb(23,42,72),Color.argb(55,120,170,220),.7f*density)
+            p.color=Color.argb(35,140,180,220); p.style=Paint.Style.FILL
+            c.drawCircle(boardLeft+(x+.5f)*cell,boardTop+(y+.5f)*cell,1.4f*density,p)
         }
         for(tile in board) drawTile(c,tile)
         val rowY=boardTop+boardSize+27*density
@@ -243,21 +249,17 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         val r=boardLeft+(tile.x+1)*cell-4*density
         val b=boardTop+(tile.y+1)*cell-4*density
         val base=tileColors[(tile.x+tile.y+level)%tileColors.size]
-        val dark=Color.rgb((Color.red(base)*.48f).toInt(),(Color.green(base)*.48f).toInt(),(Color.blue(base)*.55f).toInt())
-        rounded(c,l,t+4*density,r,b+4*density,9*density,Color.rgb(5,12,27))
-        rounded(c,l,t,r,b,9*density,base,Color.argb(140,255,255,255),1*density)
-        p.shader=LinearGradient(l,t,r,b,Color.argb(90,255,255,255),dark,Shader.TileMode.CLAMP)
-        c.drawRoundRect(l+2*density,t+2*density,r-2*density,b-2*density,8*density,8*density,p)
-        p.shader=null
         if(tile.id==lastHint) {
-            p.color=gold;p.style=Paint.Style.STROKE;p.strokeWidth=3*density
-            c.drawRoundRect(l-2*density,t-2*density,r+2*density,b+2*density,10*density,10*density,p);p.style=Paint.Style.FILL
+            p.color=Color.argb(65,255,198,76);p.style=Paint.Style.FILL
+            c.drawCircle((l+r)*.5f,(t+b)*.5f,cell*.32f,p)
+            p.color=gold;p.style=Paint.Style.STROKE;p.strokeWidth=1.8f*density
+            c.drawCircle((l+r)*.5f,(t+b)*.5f,cell*.30f,p);p.style=Paint.Style.FILL
         }
-        drawArrow(c,(l+r)*.5f,(t+b)*.5f,cell*.28f,tile.dir,Color.WHITE, max(2.4f*density,cell*.065f))
+        drawArrow(c,(l+r)*.5f,(t+b)*.5f,cell*.34f,tile.dir,base, max(2.1f*density,cell*.045f))
     }
 
     private fun drawArrow(c:Canvas,cx:Float,cy:Float,size:Float,dir:Int,color:Int,stroke:Float) {
-        val angle=dir*PI/2.0
+        val angle=(dir-1)*PI/2.0
         val dx=cos(angle).toFloat(); val dy=sin(angle).toFloat()
         val px=-dy; val py=dx
         val tailX=cx-dx*size*.58f; val tailY=cy-dy*size*.58f
@@ -282,10 +284,19 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         text(c,"PUZZLE COMPLETE!",w*.5f,h*.2f+125*density,23*density,gold,Paint.Align.CENTER,true)
         text(c,"You cleared every arrow.",w*.5f,h*.2f+155*density,14*density,muted,Paint.Align.CENTER)
         rounded(c,w*.2f,h*.48f,w*.8f,h*.66f,18*density,Color.rgb(20,43,77),cyan,1.5f*density)
-        text(c,"+"+(25+level*2)+" BONUS COINS",w*.5f,h*.48f+35*density,17*density,gold,Paint.Align.CENTER,true)
+        text(c,"+10 COINS  •  +10 POINTS",w*.5f,h*.48f+35*density,17*density,gold,Paint.Align.CENTER,true)
         text(c,"MOVES  "+moves,w*.5f,h*.48f+66*density,13*density,white,Paint.Align.CENTER)
-        bigButton(c,"NEXT LEVEL",w*.22f,h*.72f,w*.78f,h*.72f+50*density,cyan,Color.rgb(7,35,58))
+        bigButton(c,if(level>=10) "FINISH GAME" else "NEXT LEVEL",w*.22f,h*.72f,w*.78f,h*.72f+50*density,cyan,Color.rgb(7,35,58))
         bigButton(c,"MAIN MENU",w*.22f,h*.72f+64*density,w*.78f,h*.72f+111*density,Color.rgb(48,73,121),white)
+    }
+
+    private fun drawGameOver(c:Canvas,w:Float,h:Float) {
+        drawLogo(c,w,h*.22f)
+        text(c,"NO HEARTS LEFT",w*.5f,h*.22f+125*density,23*density,Color.rgb(255,105,125),Paint.Align.CENTER,true)
+        text(c,"You made a wrong move. Try this level again.",w*.5f,h*.22f+155*density,12*density,muted,Paint.Align.CENTER)
+        text(c,"LEVEL  "+level+"     SCORE  "+score,w*.5f,h*.49f,15*density,white,Paint.Align.CENTER,true)
+        bigButton(c,"RESTART LEVEL",w*.22f,h*.65f,w*.78f,h*.65f+52*density,cyan,Color.rgb(7,35,58))
+        bigButton(c,"MAIN MENU",w*.22f,h*.65f+66*density,w*.78f,h*.65f+116*density,Color.rgb(48,73,121),white)
     }
 
     private fun hit(l:Float,t:Float,r:Float,b:Float,x:Float,y:Float)=x in l..r && y in t..b
@@ -329,13 +340,24 @@ private class ArrowPuzzleView(context: Context) : View(context) {
                     val tile=board.firstOrNull { it.x==gx && it.y==gy }
                     if(tile!=null) {
                         if(canExit(tile,board)) removeTile(tile)
-                        else { message="Blocked! Clear the arrow in its path first";lastHint=-1 }
+                        else {
+                            hearts--
+                            lastHint=-1
+                            message="Wrong arrow! -1 heart"
+                            if(hearts<=0) screen=3
+                        }
                     }
                 }
             }
             2 -> {
-                if(y>h*.70f && y<h*.72f+58*density) { level++;save();screen=1;generateLevel() }
-                else if(y>h*.72f+60*density) { screen=0;save() }
+                if(y>h*.70f && y<h*.72f+58*density) {
+                    if(level>=10) { level=1;screen=0;save() }
+                    else { level++;save();screen=1;generateLevel() }
+                } else if(y>h*.72f+60*density) { screen=0;save() }
+            }
+            3 -> {
+                if(y>h*.64f && y<h*.65f+58*density) { screen=1;generateLevel() }
+                else if(y>h*.65f+60*density) { screen=0;save() }
             }
         }
         invalidate()
