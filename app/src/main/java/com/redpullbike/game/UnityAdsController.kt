@@ -12,7 +12,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.unity3d.ads.*
+import com.unity3d.ads.IUnityAdsInitializationListener
+import com.unity3d.ads.IUnityAdsLoadListener
+import com.unity3d.ads.IUnityAdsShowListener
+import com.unity3d.ads.UnityAds
+import com.unity3d.ads.UnityAdsShowOptions
+import com.unity3d.services.banners.BannerErrorInfo
+import com.unity3d.services.banners.BannerView
+import com.unity3d.services.banners.UnityBannerSize
 import kotlinx.coroutines.delay
 
 object UnityAdsController {
@@ -24,62 +31,76 @@ object UnityAdsController {
     @Volatile var initialized = false
         private set
 
-    @OptIn(UnityAdsExperimental::class)
     fun initialize(activity: Activity) {
-        if (UnityAds.isInitialized) {
-            initialized = true
-            return
-        }
-        val config = InitializationConfiguration.Builder(GAME_ID)
-            .withContext(activity)
-            .withTestMode(true)
-            .build()
-        UnityAds.initialize(config, InitializationListener { error ->
-            if (error == null) {
-                initialized = true
-                Log.d("ArrowEscapeAds", "Unity Ads initialized in TEST mode")
-            } else {
-                initialized = false
-                Log.e("ArrowEscapeAds", "Unity Ads init failed: ${error.message}")
+        if (initialized) return
+        UnityAds.initialize(
+            activity.applicationContext,
+            GAME_ID,
+            true,
+            object : IUnityAdsInitializationListener {
+                override fun onInitializationComplete() {
+                    initialized = true
+                    Log.d("ArrowEscapeAds", "Unity Ads initialized in TEST mode")
+                }
+
+                override fun onInitializationFailed(
+                    error: UnityAds.UnityAdsInitializationError,
+                    message: String
+                ) {
+                    initialized = false
+                    Log.e("ArrowEscapeAds", "Unity Ads init failed: $error $message")
+                }
             }
-        })
+        )
     }
 
-    @OptIn(UnityAdsExperimental::class)
     fun showRewarded(activity: Activity, placement: String, onReward: () -> Unit, onUnavailable: () -> Unit) {
         if (!initialized) {
             onUnavailable()
             return
         }
-        val loadConfig = LoadConfiguration.Builder(placement).build()
-        RewardedAd.load(loadConfig, RewardedLoadListener { ad, error ->
-            if (ad == null) {
-                Log.e("ArrowEscapeAds", "Rewarded load failed: ${error?.message}")
-                activity.runOnUiThread { onUnavailable() }
-                return@RewardedLoadListener
+        UnityAds.load(placement, object : IUnityAdsLoadListener {
+            override fun onUnityAdsAdLoaded(placementId: String) {
+                activity.runOnUiThread {
+                    UnityAds.show(activity, placement, UnityAdsShowOptions(), object : IUnityAdsShowListener {
+                        override fun onUnityAdsShowStart(placementId: String) {}
+                        override fun onUnityAdsShowClick(placementId: String) {}
+                        override fun onUnityAdsShowComplete(
+                            placementId: String,
+                            state: UnityAds.UnityAdsShowCompletionState
+                        ) {
+                            if (state == UnityAds.UnityAdsShowCompletionState.COMPLETED) {
+                                activity.runOnUiThread { onReward() }
+                            }
+                        }
+                        override fun onUnityAdsShowFailure(
+                            placementId: String,
+                            error: UnityAds.UnityAdsShowError,
+                            message: String
+                        ) {
+                            Log.e("ArrowEscapeAds", "Rewarded show failed: $error $message")
+                            activity.runOnUiThread { onUnavailable() }
+                        }
+                    })
+                }
             }
-            val showConfig = ShowConfiguration.Builder().build()
-            ad.show(showConfig, object : RewardedShowListener {
-                override fun onStarted(unityAd: RewardedAd) {}
-                override fun onClicked(unityAd: RewardedAd) {}
-                override fun onCompleted(unityAd: RewardedAd, state: ShowFinishState) {}
-                override fun onFailed(unityAd: RewardedAd, error: UnityAdsError) {
-                    Log.e("ArrowEscapeAds", "Rewarded show failed: ${error.message}")
-                    activity.runOnUiThread { onUnavailable() }
-                }
-                override fun onRewarded(unityAd: RewardedAd) {
-                    activity.runOnUiThread { onReward() }
-                }
-            })
+
+            override fun onUnityAdsFailedToLoad(
+                placementId: String,
+                error: UnityAds.UnityAdsLoadError,
+                message: String
+            ) {
+                Log.e("ArrowEscapeAds", "Rewarded load failed: $error $message")
+                activity.runOnUiThread { onUnavailable() }
+            }
         })
     }
 }
 
-@OptIn(UnityAdsExperimental::class)
 @Composable
 fun UnityBottomBanner() {
     val context = LocalContext.current
-    var bannerAd by remember { mutableStateOf<BannerAd?>(null) }
+    var ready by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         var attempts = 0
@@ -87,35 +108,41 @@ fun UnityBottomBanner() {
             delay(250)
             attempts++
         }
-        if (UnityAdsController.initialized) {
-            val config = BannerLoadConfiguration.Builder(
-                UnityAdsController.BANNER,
-                BannerSize(320, 50)
-            ).build()
-            BannerAd.load(config, BannerLoadListener { ad, error ->
-                if (ad != null) bannerAd = ad
-                else Log.e("ArrowEscapeAds", "Banner load failed: ${error?.message}")
-            })
-        }
+        ready = UnityAdsController.initialized
     }
 
-    AndroidView(
-        modifier = Modifier.fillMaxWidth().height(50.dp),
-        factory = { FrameLayout(it) },
-        update = { frame ->
-            val adView = bannerAd?.view
-            if (adView != null && adView.parent !== frame) {
-                (adView.parent as? ViewGroup)?.removeView(adView)
-                frame.removeAllViews()
-                frame.addView(
-                    adView,
-                    FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        Gravity.CENTER
+    if (ready) {
+        AndroidView(
+            modifier = Modifier.fillMaxWidth().height(50.dp),
+            factory = { ctx -> FrameLayout(ctx) },
+            update = { frame ->
+                if (frame.childCount == 0) {
+                    val banner = BannerView(
+                        context,
+                        UnityAdsController.BANNER,
+                        UnityBannerSize(320, 50)
                     )
-                )
+                    banner.setListener(object : BannerView.IListener {
+                        override fun onBannerLoaded(bannerAdView: BannerView) {
+                            Log.d("ArrowEscapeAds", "Bottom banner loaded")
+                        }
+                        override fun onBannerFailedToLoad(bannerAdView: BannerView, errorInfo: BannerErrorInfo) {
+                            Log.e("ArrowEscapeAds", "Banner load failed: ${errorInfo.errorMessage}")
+                        }
+                        override fun onBannerClick(bannerAdView: BannerView) {}
+                        override fun onBannerLeftApplication(bannerAdView: BannerView) {}
+                    })
+                    frame.addView(
+                        banner,
+                        FrameLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            Gravity.CENTER
+                        )
+                    )
+                    banner.load()
+                }
             }
-        }
-    )
+        )
+    }
 }
