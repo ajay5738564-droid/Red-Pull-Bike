@@ -51,17 +51,17 @@ private object Levels {
         val tier = when(id) { in 1..5 -> 0; in 6..10 -> 1; in 11..20 -> 2; in 21..30 -> 3; in 31..40 -> 4; else -> 5 }
         val cols = listOf(12,14,16,18,20,22)[tier] + if(id % 4 == 0) 1 else 0
         val rows = listOf(12,14,16,18,20,22)[tier] + if(id % 5 == 0) 1 else 0
-        val count = (12 + id * .70f).roundToInt().coerceAtMost(48)
+        val count = (12 + id * .50f).roundToInt().coerceAtMost(38)
         val rng = Random(id * 9109 + 73)
         var best: List<ArrowPath>? = null
         var bestFree = Int.MAX_VALUE
 
         // Generate many candidate boards, then keep only boards that the real
         // ray/path solver can completely clear. Prefer fewer initially-free arrows.
-        repeat(420) {
+        repeat(36) {
             val candidate = ArrayList<ArrowPath>()
             var serial = 0
-            while(candidate.size < count && serial < count * 100) {
+            while(candidate.size < count && serial < count * 35) {
                 serial++
                 val path = makePath(candidate.size, cols, rows, rng) ?: continue
                 if(candidate.none { pathsConflict(path, it) }) candidate += path
@@ -99,7 +99,7 @@ private object Levels {
         backwards += head
         var current = head
         var back = V(-direction.x,-direction.y)
-        val segments = rng.nextInt(3,6)
+        val segments = rng.nextInt(2,4)
         repeat(segments) { index ->
             val length = rng.nextInt(2,5).toFloat()
             val next = V(current.x + back.x*length, current.y + back.y*length)
@@ -120,7 +120,7 @@ private object Levels {
             for(k in 0..8) {
                 val t=k/8f
                 val p=V(p0.x+(p1.x-p0.x)*t,p0.y+(p1.y-p0.y)*t)
-                if(pointNearSegment(p,q0,q1,.52f)) return true
+                if(pointNearSegment(p,q0,q1,.34f)) return true
             }
         }
         return false
@@ -152,10 +152,12 @@ private fun ArrowEscapeApp() {
     var haptics by remember { mutableStateOf(true) }
     var message by remember { mutableStateOf("") }
     var animating by remember { mutableIntStateOf(-1) }
+    var bounceId by remember { mutableIntStateOf(-1) }
     var pan by remember { mutableStateOf(Offset.Zero) }
     var zoom by remember { mutableFloatStateOf(1f) }
     var completed by remember { mutableIntStateOf(prefs.getInt("completed",0)) }
     val puzzle = remember(level) { Levels.get(level) }
+    LaunchedEffect(bounceId) { if(bounceId>=0) { delay(280); bounceId=-1 } }
     fun start(id:Int) {
         level=id.coerceIn(1,50); remaining=Levels.get(level).paths.map { it.id }.toSet()
         lives=3; hints=if(level<=10) 2 else if(level<=30) 1 else 0
@@ -176,7 +178,7 @@ private fun ArrowEscapeApp() {
                     val arrow=puzzle.paths.firstOrNull { it.id==id } ?: return@GameScreen
                     val isFree = isFree(arrow,puzzle.paths.filter { it.id in remaining && it.id!=id },puzzle.cols,puzzle.rows)
                     if(isFree) { animating=id; message=""; remaining=remaining-id; hintId=-1; animating=-1 }
-                    else { lives--; message="Blocked! The arrow bounced back."; if(lives<=0) page="failed" }
+                    else { lives--; bounceId=id; message="Blocked! The arrow bounced back."; if(lives<=0) page="failed" }
                 },
                 onHint={ if(hints>0) { val candidate=puzzle.paths.firstOrNull { it.id in remaining && isFree(it,puzzle.paths.filter { p->p.id in remaining && p.id!=it.id },puzzle.cols,puzzle.rows) }; if(candidate!=null){hintId=candidate.id;hints--;message="This arrow has a free path."} else message="No free arrow found." } else message="No hints left." },
                 onGrid={showGrid=!showGrid},onRestart={start(level)},onBack={page="levels"}
@@ -239,7 +241,8 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
     }
 }
 @Composable private fun SettingRow(label:String,value:Boolean,onChange:(Boolean)->Unit) { Row(Modifier.fillMaxWidth().padding(vertical=12.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){Text(label,color=Navy);Switch(value,onChange)} }
-@Composable private fun GameScreen(level:PuzzleLevel,remaining:Set<Int>,lives:Int,hints:Int,hintId:Int,grid:Boolean,message:String,zoom:Float,pan:Offset,onZoom:(Float)->Unit,onPan:(Offset)->Unit,onArrow:(Int)->Unit,onHint:()->Unit,onGrid:()->Unit,onRestart:()->Unit,onBack:()->Unit) {
+@Composable private fun GameScreen(level:PuzzleLevel,remaining:Set<Int>,lives:Int,hints:Int,hintId:Int,grid:Boolean,message:String,zoom:Float,pan:Offset,bounceId:Int,onZoom:(Float)->Unit,onPan:(Offset)->Unit,onArrow:(Int)->Unit,onHint:()->Unit,onGrid:()->Unit,onRestart:()->Unit,onBack:()->Unit) {
+    val bounceProgress by animateFloatAsState(targetValue=if(bounceId>=0) 1f else 0f, animationSpec=tween(260), label="arrowBounce")
     Column(Modifier.fillMaxSize().background(Color.White).padding(horizontal=18.dp, vertical=8.dp)) {
         Text("Tap Away\nArrows",modifier=Modifier.fillMaxWidth(),textAlign=TextAlign.Center,fontSize=30.sp,lineHeight=34.sp,fontWeight=FontWeight.ExtraBold,color=Navy)
         Spacer(Modifier.height(14.dp))
@@ -260,7 +263,7 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
                     val oy=(size.height-side*level.rows)/2f+pan.y
                     val p=V((pos.x-ox)/side,(pos.y-oy)/side)
                     val hit=level.paths.filter{it.id in remaining}.firstOrNull { path ->
-                        path.points.zipWithNext().any { (a,b)->pointNearSegment(p,a,b,.19f) }
+                        path.points.zipWithNext().any { (a,b)->pointNearSegment(p,a,b,.14f) }
                     }
                     hit?.let{onArrow(it.id)}
                 }
@@ -270,10 +273,11 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
                 val oy=(size.height-side*level.rows)/2f+pan.y
                 if(grid) for(x in 0..level.cols) for(y in 0..level.rows) drawCircle(Color(0xFFDCE2E8),2.dp.toPx(),Offset(ox+x*side,oy+y*side))
                 level.paths.filter{it.id in remaining}.forEach { arrow ->
-                    val pts=arrow.points.map{Offset(ox+it.x*side,oy+it.y*side)}
+                    val shift=if(arrow.id==bounceId) sin(bounceProgress*PI).toFloat()*side*.48f else 0f
+                    val pts=arrow.points.map{Offset(ox+it.x*side+arrow.direction.x*shift,oy+it.y*side+arrow.direction.y*shift)}
                     val col=if(arrow.id==hintId) Blue else Navy
                     val path=Path().apply { pts.firstOrNull()?.let{moveTo(it.x,it.y)};pts.drop(1).forEach{lineTo(it.x,it.y)} }
-                    drawPath(path,col,style=Stroke(width=max(1.25.dp.toPx(),side*.038f),cap=StrokeCap.Round,join=PathEffectCorner))
+                    drawPath(path,col,style=Stroke(width=max(1.0.dp.toPx(),side*.032f),cap=StrokeCap.Round,join=PathEffectCorner))
                     val end=pts.last()
                     val angle=atan2(arrow.direction.y,arrow.direction.x)
                     val len=side*.19f; val wing=side*.105f
