@@ -121,15 +121,6 @@ fun UnityBottomBanner() {
                         UnityAdsController.BANNER,
                         UnityBannerSize(320, 50)
                     )
-                    banner.setListener(object : BannerView.IListener {
-                        override fun onBannerShown(bannerAdView: BannerView) {
-                            Log.d("ArrowEscapeAds", "Bottom banner shown")
-                        }
-                        override fun onBannerClicked(bannerAdView: BannerView) {}
-                        override fun onBannerFailedToShow(bannerAdView: BannerView, error: UnityAds.UnityAdsShowError) {
-                            Log.e("ArrowEscapeAds", "Banner show failed: $error")
-                        }
-                    })
                     frame.addView(
                         banner,
                         FrameLayout.LayoutParams(
