@@ -309,11 +309,19 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         var cy=(t+b)*.5f
         if (tile.id == collisionTileId) {
             val elapsed = SystemClock.uptimeMillis() - collisionStartMs
-            val progress = (elapsed.toFloat() / 340f).coerceIn(0f,1f)
-            val bump = sin(progress * PI).toFloat() * cell * 0.24f
+            val progress = (elapsed.toFloat() / 620f).coerceIn(0f,1f)
+            val blocker = board.firstOrNull { it.id == collisionBlockerId }
+            val steps = if (blocker != null) {
+                if (tile.dir == 0) tile.y - blocker.y - 1
+                else if (tile.dir == 1) blocker.x - tile.x - 1
+                else if (tile.dir == 2) blocker.y - tile.y - 1
+                else tile.x - blocker.x - 1
+            } else 1
+            val travel = (steps.coerceAtLeast(0) + 0.45f) * cell
+            val bump = (1f - abs(2f*progress - 1f)) * travel
             cx += intArrayOf(0,1,0,-1)[tile.dir] * bump
             cy += intArrayOf(-1,0,1,0)[tile.dir] * bump
-            if (progress >= 1f) collisionTileId = -1 else postInvalidateDelayed(16)
+            if (progress >= 1f) { collisionTileId = -1; collisionBlockerId = -1 } else postInvalidateDelayed(16)
         }
         drawArrow(c,cx,cy,cell*.405f,tile.dir,base, max(1.4f*density,cell*.055f))
     }
@@ -404,6 +412,18 @@ private class ArrowPuzzleView(context: Context) : View(context) {
                         else {
                             hearts--
                             collisionTileId = tile.id
+                            val dx = intArrayOf(0,1,0,-1)[tile.dir]
+                            val dy = intArrayOf(-1,0,1,0)[tile.dir]
+                            collisionBlockerId = board.firstOrNull { other ->
+                                var bx = tile.x + dx
+                                var by = tile.y + dy
+                                var found = false
+                                while (bx in 0 until gridWidth && by in 0 until gridHeight) {
+                                    if (other.x == bx && other.y == by) { found = true; break }
+                                    bx += dx; by += dy
+                                }
+                                found
+                            }?.id ?: -1
                             collisionStartMs = SystemClock.uptimeMillis()
                             playSfx(ToneGenerator.TONE_PROP_NACK)
                             lastHint=-1
