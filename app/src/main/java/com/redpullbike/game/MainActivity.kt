@@ -36,6 +36,14 @@ private class ArrowPuzzleView(context: Context) : View(context) {
     private val density = resources.displayMetrics.density
     private val tone = ToneGenerator(AudioManager.STREAM_MUSIC, 65)
     private var boardZoom = 1f
+    private var panX = 0f
+    private var panY = 0f
+    private var lastTouchX = 0f
+    private var lastTouchY = 0f
+    private var touchDownX = 0f
+    private var touchDownY = 0f
+    private var dragged = false
+    private var collisionBlockerId = -1
     private var collisionTileId = -1
     private var collisionStartMs = 0L
     private var levelStartMs = SystemClock.uptimeMillis()
