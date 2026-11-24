@@ -144,7 +144,7 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         collisionTileId = -1
         lastHint = -1
         levelWon = false
-        message = "Tap an arrow with a clear path"
+        message = "Pinch to zoom • tap a clear arrow"
         best = prefs.getInt("best_" + level, 0)
         invalidate()
     }
@@ -275,11 +275,11 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         val secondsLeft = ((timeLimitMs - (SystemClock.uptimeMillis() - levelStartMs)).coerceAtLeast(0L) / 1000L)
         text(c,"TIME  "+secondsLeft+"s",w-20*density,59*density,11*density,if(secondsLeft<15) Color.rgb(255,100,120) else gold,Paint.Align.RIGHT,true)
         text(c,message,w*.5f,83*density,10*density,muted,Paint.Align.CENTER)
-        val available = (min(w-34*density,h*.62f) * boardZoom).coerceAtMost(w-20*density)
+        val available = (min(w-34*density,h*.50f) * boardZoom).coerceAtMost(w-20*density)
         cell = available / gridSize
         val boardSize=cell*gridSize
         boardLeft=(w-boardSize)*.5f
-        boardTop=(h-boardSize)*.49f
+        boardTop=(h-boardSize)*.42f
         p.color=Color.argb(95,8,19,42);p.style=Paint.Style.FILL;c.drawRect(boardLeft-5*density,boardTop-5*density,boardLeft+boardSize+5*density,boardTop+boardSize+5*density,p)
         p.color=Color.argb(70,60,226,238);p.style=Paint.Style.STROKE;p.strokeWidth=1*density;c.drawRect(boardLeft-5*density,boardTop-5*density,boardLeft+boardSize+5*density,boardTop+boardSize+5*density,p);p.style=Paint.Style.FILL
         for(y in 0 until gridSize) for(x in 0 until gridSize) {
@@ -356,7 +356,7 @@ private class ArrowPuzzleView(context: Context) : View(context) {
 
     private fun drawGameOver(c:Canvas,w:Float,h:Float) {
         drawLogo(c,w,h*.22f)
-        text(c,"NO HEARTS LEFT",w*.5f,h*.22f+125*density,23*density,Color.rgb(255,105,125),Paint.Align.CENTER,true)
+        text(c,"LEVEL FAILED",w*.5f,h*.22f+125*density,23*density,Color.rgb(255,105,125),Paint.Align.CENTER,true)
         text(c,message,w*.5f,h*.22f+155*density,12*density,muted,Paint.Align.CENTER)
         text(c,"LEVEL  "+level+"     SCORE  "+score,w*.5f,h*.49f,15*density,white,Paint.Align.CENTER,true)
         bigButton(c,"RESTART LEVEL",w*.22f,h*.65f,w*.78f,h*.65f+52*density,cyan,Color.rgb(7,35,58))
