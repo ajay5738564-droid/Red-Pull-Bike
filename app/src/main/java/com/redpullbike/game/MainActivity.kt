@@ -111,55 +111,37 @@ private class ArrowPuzzleView(context: Context) : View(context) {
     }
 
     private fun generateLevel() {
-        gridSize = when (level) {
-            in 1..2 -> 5
-            in 3..5 -> 6
-            in 6..8 -> 7
-            else -> 8
-        }
-        val target = when (level) {
-            1 -> 10; 2 -> 12; 3 -> 15; 4 -> 18; 5 -> 21
-            6 -> 24; 7 -> 27; 8 -> 30; 9 -> 33; else -> 36
-        }
-        var chosen = mutableListOf<ArrowTile>()
-        var fallbackCandidate = mutableListOf<ArrowTile>()
-        val maxInitialSafe = when (level) { in 1..2 -> 4; in 3..5 -> 3; in 6..8 -> 2; else -> 1 }
-        var attempt = 0
-        while (attempt < 8000) {
-            val random = Random(level * 971 + attempt * 31)
-            val cells = (0 until gridSize * gridSize).shuffled(random).take(target)
-            val candidate = cells.mapIndexed { i, n -> ArrowTile(i, n % gridSize, n / gridSize, random.nextInt(4)) }.toMutableList()
-            if (isSolvable(candidate)) {
-                if (fallbackCandidate.isEmpty()) fallbackCandidate = candidate
-                if (candidate.count { canExit(it, candidate) } <= maxInitialSafe) { chosen = candidate; break }
-            }
-            attempt++
-        }
-        if (chosen.isEmpty()) chosen = fallbackCandidate
-        if (chosen.isEmpty()) {
-            val fallback = mutableListOf<ArrowTile>()
-            val perimeter = mutableListOf<Triple<Int,Int,Int>>()
-            for (x in 0 until gridSize) perimeter.add(Triple(x,0,0))
-            for (y in 1 until gridSize) perimeter.add(Triple(gridSize-1,y,1))
-            for (x in gridSize-2 downTo 0) perimeter.add(Triple(x,gridSize-1,2))
-            for (y in gridSize-2 downTo 1) perimeter.add(Triple(0,y,3))
-            perimeter.take(target).forEachIndexed { i,v -> fallback.add(ArrowTile(i,v.first,v.second,v.third)) }
-            chosen = fallback
-        }
-        board = chosen
+        val tier = (level - 1) / 3
+        gridWidth = (5 + tier + if (level % 3 == 2) 1 else 0).coerceAtMost(12)
+        gridHeight = (5 + tier + if (level % 3 == 0) 1 else 0).coerceAtMost(12)
+        val totalCells = gridWidth * gridHeight
+        val density = (0.66f + level * 0.0028f).coerceAtMost(0.82f)
+        val target = (totalCells * density).roundToInt().coerceAtMost(totalCells - 2)
+        val random = Random(level * 7919)
+        val cells = (0 until totalCells).shuffled(random).take(target)
+        board = cells.mapIndexed { i, n ->
+            val x = n % gridWidth
+            val y = n / gridWidth
+            val distances = listOf(y, gridWidth - 1 - x, gridHeight - 1 - y, x)
+            val minDistance = distances.minOrNull() ?: 0
+            val nearestEdges = distances.indices.filter { distances[it] == minDistance }
+            val direction = nearestEdges[random.nextInt(nearestEdges.size)]
+            ArrowTile(i, x, y, direction)
+        }.toMutableList()
         history.clear()
         moves = 0
         hearts = 3
-        hints = when (level) { in 1..2 -> 3; in 3..5 -> 2; in 6..8 -> 1; else -> 0 }
+        hints = when (level) { in 1..3 -> 2; in 4..8 -> 1; else -> 0 }
         levelStartMs = SystemClock.uptimeMillis()
-        timeLimitMs = when (level) {
-            1 -> 120_000L; 2 -> 110_000L; 3 -> 100_000L; 4 -> 95_000L; 5 -> 90_000L
-            6 -> 85_000L; 7 -> 80_000L; 8 -> 75_000L; 9 -> 70_000L; else -> 65_000L
-        }
+        timeLimitMs = (150_000L - level * 1_700L).coerceAtLeast(65_000L)
         collisionTileId = -1
+        collisionBlockerId = -1
         lastHint = -1
         levelWon = false
-        message = "Pinch to zoom • tap a clear arrow"
+        panX = 0f
+        panY = 0f
+        boardZoom = 1f
+        message = "Pinch to zoom • drag to move • tap an arrow"
         best = prefs.getInt("best_" + level, 0)
         invalidate()
     }
