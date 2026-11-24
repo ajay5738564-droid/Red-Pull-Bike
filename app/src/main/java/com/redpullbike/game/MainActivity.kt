@@ -44,8 +44,8 @@ private data class ArrowPath(val id: Int, val points: List<V>, val exit: V, val 
 private data class PuzzleLevel(val id: Int, val cols: Int, val rows: Int, val paths: List<ArrowPath>, val difficulty: String)
 
 private object Levels {
-    private val cache = (1..50).map { make(it) }
-    fun get(id: Int) = cache[(id - 1).coerceIn(0,49)]
+    private val cache = HashMap<Int, PuzzleLevel>()
+    fun get(id: Int): PuzzleLevel = cache.getOrPut(id.coerceIn(1,50)) { make(id.coerceIn(1,50)) }
 
     private fun make(id: Int): PuzzleLevel {
         val tier = when(id) { in 1..5 -> 0; in 6..10 -> 1; in 11..20 -> 2; in 21..30 -> 3; in 31..40 -> 4; else -> 5 }
@@ -58,7 +58,7 @@ private object Levels {
 
         // Generate many candidate boards, then keep only boards that the real
         // ray/path solver can completely clear. Prefer fewer initially-free arrows.
-        repeat(36) {
+        repeat(18) {
             val candidate = ArrayList<ArrowPath>()
             var serial = 0
             while(candidate.size < count && serial < count * 35) {
@@ -158,6 +158,7 @@ private fun ArrowEscapeApp() {
     var completed by remember { mutableIntStateOf(prefs.getInt("completed",0)) }
     val puzzle = remember(level) { Levels.get(level) }
     LaunchedEffect(bounceId) { if(bounceId>=0) { delay(280); bounceId=-1 } }
+    LaunchedEffect(animating) { val escaped=animating; if(escaped>=0) { delay(280); remaining=remaining-escaped; hintId=-1; animating=-1 } }
     fun start(id:Int) {
         level=id.coerceIn(1,50); remaining=Levels.get(level).paths.map { it.id }.toSet()
         lives=3; hints=if(level<=10) 2 else if(level<=30) 1 else 0
@@ -170,14 +171,14 @@ private fun ArrowEscapeApp() {
         "game" -> {
             val solved = remaining.isEmpty()
             LaunchedEffect(solved) { if(solved) { delay(500); page="complete"; completed=maxOf(completed,level); highest=maxOf(highest,(level+1).coerceAtMost(50)); prefs.edit().putInt("completed",completed).putInt("highest",highest).apply() } }
-            GameScreen(puzzle,remaining,lives,hints,hintId,showGrid,message,zoom,pan,bounceId,
+            GameScreen(puzzle,remaining,lives,hints,hintId,showGrid,message,zoom,pan,bounceId,animating,
                 onZoom={zoom=(zoom*it).coerceIn(.65f,2.3f)},
                 onPan={pan+=it},
                 onArrow={id ->
                     if(animating!=-1 || page!="game") return@GameScreen
                     val arrow=puzzle.paths.firstOrNull { it.id==id } ?: return@GameScreen
                     val isFree = isFree(arrow,puzzle.paths.filter { it.id in remaining && it.id!=id },puzzle.cols,puzzle.rows)
-                    if(isFree) { animating=id; message=""; remaining=remaining-id; hintId=-1; animating=-1 }
+                    if(isFree) { animating=id; message="" }
                     else { lives--; bounceId=id; message="Blocked! The arrow bounced back."; if(lives<=0) page="failed" }
                 },
                 onHint={ if(hints>0) { val candidate=puzzle.paths.firstOrNull { it.id in remaining && isFree(it,puzzle.paths.filter { p->p.id in remaining && p.id!=it.id },puzzle.cols,puzzle.rows) }; if(candidate!=null){hintId=candidate.id;hints--;message="This arrow has a free path."} else message="No free arrow found." } else message="No hints left." },
@@ -241,8 +242,9 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
     }
 }
 @Composable private fun SettingRow(label:String,value:Boolean,onChange:(Boolean)->Unit) { Row(Modifier.fillMaxWidth().padding(vertical=12.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){Text(label,color=Navy);Switch(value,onChange)} }
-@Composable private fun GameScreen(level:PuzzleLevel,remaining:Set<Int>,lives:Int,hints:Int,hintId:Int,grid:Boolean,message:String,zoom:Float,pan:Offset,bounceId:Int,onZoom:(Float)->Unit,onPan:(Offset)->Unit,onArrow:(Int)->Unit,onHint:()->Unit,onGrid:()->Unit,onRestart:()->Unit,onBack:()->Unit) {
+@Composable private fun GameScreen(level:PuzzleLevel,remaining:Set<Int>,lives:Int,hints:Int,hintId:Int,grid:Boolean,message:String,zoom:Float,pan:Offset,bounceId:Int,escapingId:Int,onZoom:(Float)->Unit,onPan:(Offset)->Unit,onArrow:(Int)->Unit,onHint:()->Unit,onGrid:()->Unit,onRestart:()->Unit,onBack:()->Unit) {
     val bounceProgress by animateFloatAsState(targetValue=if(bounceId>=0) 1f else 0f, animationSpec=tween(260), label="arrowBounce")
+    val escapeProgress by animateFloatAsState(targetValue=if(escapingId>=0) 1f else 0f, animationSpec=tween(260), label="arrowEscape")
     Column(Modifier.fillMaxSize().background(Color.White).padding(horizontal=18.dp, vertical=8.dp)) {
         Text("Tap Away\nArrows",modifier=Modifier.fillMaxWidth(),textAlign=TextAlign.Center,fontSize=30.sp,lineHeight=34.sp,fontWeight=FontWeight.ExtraBold,color=Navy)
         Spacer(Modifier.height(14.dp))
