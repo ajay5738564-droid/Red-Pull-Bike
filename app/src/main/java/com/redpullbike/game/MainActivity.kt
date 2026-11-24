@@ -170,7 +170,7 @@ private fun ArrowEscapeApp() {
         "game" -> {
             val solved = remaining.isEmpty()
             LaunchedEffect(solved) { if(solved) { delay(500); page="complete"; completed=maxOf(completed,level); highest=maxOf(highest,(level+1).coerceAtMost(50)); prefs.edit().putInt("completed",completed).putInt("highest",highest).apply() } }
-            GameScreen(puzzle,remaining,lives,hints,hintId,showGrid,message,zoom,pan,
+            GameScreen(puzzle,remaining,lives,hints,hintId,showGrid,message,zoom,pan,bounceId,
                 onZoom={zoom=(zoom*it).coerceIn(.65f,2.3f)},
                 onPan={pan+=it},
                 onArrow={id ->
