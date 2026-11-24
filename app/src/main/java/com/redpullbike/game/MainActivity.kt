@@ -46,38 +46,94 @@ private data class PuzzleLevel(val id: Int, val cols: Int, val rows: Int, val pa
 private object Levels {
     private val cache = (1..50).map { make(it) }
     fun get(id: Int) = cache[(id - 1).coerceIn(0,49)]
+
     private fun make(id: Int): PuzzleLevel {
         val tier = when(id) { in 1..5 -> 0; in 6..10 -> 1; in 11..20 -> 2; in 21..30 -> 3; in 31..40 -> 4; else -> 5 }
-        val cols = listOf(5,6,7,8,9,10)[tier] + if (id % 3 == 0) 1 else 0
-        val rows = listOf(5,6,7,8,9,10)[tier] + if (id % 4 == 0) 1 else 0
-        val count = when(id) { in 1..5 -> 6 + id; in 6..10 -> 9 + id/2; in 11..20 -> 13 + id/2; in 21..30 -> 18 + id/2; in 31..40 -> 25 + id/2; else -> 34 + id/2 }.coerceAtMost(65)
-        val rng = Random(id * 9109)
-        val used = HashSet<Pair<Int,Int>>()
-        val paths = ArrayList<ArrowPath>()
-        // Deterministic original maze-like paths. Each path ends in an outward-facing arrow.
-        repeat(count) { n ->
-            var x = rng.nextInt(cols); var y = rng.nextInt(rows)
-            var tries = 0
-            while ((x to y) in used && tries++ < cols*rows) { x = rng.nextInt(cols); y = rng.nextInt(rows) }
-            used.add(x to y)
-            val edge = (n + id + rng.nextInt(4)) % 4
-            val end = when(edge) {
-                0 -> V(x + .5f, 0f)
-                1 -> V(cols.toFloat(), y + .5f)
-                2 -> V(x + .5f, rows.toFloat())
-                else -> V(0f, y + .5f)
+        val cols = listOf(12,14,16,18,20,22)[tier] + if(id % 4 == 0) 1 else 0
+        val rows = listOf(12,14,16,18,20,22)[tier] + if(id % 5 == 0) 1 else 0
+        val count = (12 + id * .70f).roundToInt().coerceAtMost(48)
+        val rng = Random(id * 9109 + 73)
+        var best: List<ArrowPath>? = null
+        var bestFree = Int.MAX_VALUE
+
+        // Generate many candidate boards, then keep only boards that the real
+        // ray/path solver can completely clear. Prefer fewer initially-free arrows.
+        repeat(420) {
+            val candidate = ArrayList<ArrowPath>()
+            var serial = 0
+            while(candidate.size < count && serial < count * 100) {
+                serial++
+                val path = makePath(candidate.size, cols, rows, rng) ?: continue
+                if(candidate.none { pathsConflict(path, it) }) candidate += path
             }
-            val start = V(x + .5f, y + .5f)
-            val elbow = when(edge) {
-                0,2 -> V(start.x, (start.y + end.y)/2f)
-                else -> V((start.x + end.x)/2f, start.y)
+            if(candidate.size < count) return@repeat
+            val initiallyFree = candidate.count { a ->
+                isFree(a, candidate.filter { it.id != a.id }, cols, rows)
             }
-            val pts = if (id <= 5 || n % 3 == 0) listOf(start,end) else listOf(start, elbow, V(elbow.x + if(n%2==0) .25f else -.25f, elbow.y), end)
-            val dir = when(edge) { 0 -> V(0f,-1f); 1 -> V(1f,0f); 2 -> V(0f,1f); else -> V(-1f,0f) }
-            paths += ArrowPath(n, pts, end, dir)
+            if(initiallyFree == 0 || initiallyFree >= bestFree) return@repeat
+            if(canClear(candidate, cols, rows)) {
+                best = candidate.toList()
+                bestFree = initiallyFree
+                val target = when(id) { in 1..5 -> 4; in 6..10 -> 3; in 11..20 -> 2; in 21..35 -> 1; else -> 1 }
+                if(bestFree <= target) return@repeat
+            }
         }
-        return PuzzleLevel(id, cols, rows, paths, when(id) { in 1..10 -> "Easy"; in 11..30 -> "Normal"; in 31..47 -> "Hard"; else -> "Expert" })
+
+        // Safe fallback: deterministic, valid paths with a clear outward lane.
+        val finalPaths = best ?: buildList {
+            for(y in 2 until rows-1 step 2) {
+                if(size >= count) break
+                add(ArrowPath(size, listOf(V(1f,y.toFloat()), V(cols-2f,y.toFloat()), V(cols-1f,y.toFloat())), V(cols-1f,y.toFloat()), V(1f,0f)))
+            }
+        }
+        return PuzzleLevel(id, cols, rows, finalPaths, when(id) {
+            in 1..5 -> "Normal"; in 6..15 -> "Hard"; in 16..35 -> "Very Hard"; else -> "Expert"
+        })
     }
+
+    private fun makePath(id:Int, cols:Int, rows:Int, rng:Random):ArrowPath? {
+        val head = V(rng.nextInt(2, cols-2).toFloat(), rng.nextInt(2, rows-2).toFloat())
+        val dirs = listOf(V(1f,0f),V(-1f,0f),V(0f,1f),V(0f,-1f))
+        val direction = dirs[rng.nextInt(dirs.size)]
+        val backwards = ArrayList<V>()
+        backwards += head
+        var current = head
+        var back = V(-direction.x,-direction.y)
+        val segments = rng.nextInt(3,6)
+        repeat(segments) { index ->
+            val length = rng.nextInt(2,5).toFloat()
+            val next = V(current.x + back.x*length, current.y + back.y*length)
+            if(next.x < 1f || next.y < 1f || next.x > cols-1f || next.y > rows-1f) return null
+            backwards += next
+            current = next
+            if(index < segments-1) {
+                back = if(rng.nextBoolean()) V(-back.y,back.x) else V(back.y,-back.x)
+            }
+        }
+        return ArrowPath(id, backwards.reversed(), head, direction)
+    }
+
+    private fun pathsConflict(a:ArrowPath,b:ArrowPath):Boolean {
+        for(i in 0 until a.points.lastIndex) for(j in 0 until b.points.lastIndex) {
+            val p0=a.points[i]; val p1=a.points[i+1]
+            val q0=b.points[j]; val q1=b.points[j+1]
+            for(k in 0..8) {
+                val t=k/8f
+                val p=V(p0.x+(p1.x-p0.x)*t,p0.y+(p1.y-p0.y)*t)
+                if(pointNearSegment(p,q0,q1,.52f)) return true
+            }
+        }
+        return false
+    }
+}
+
+private fun canClear(paths:List<ArrowPath>,cols:Int,rows:Int):Boolean {
+    val left=paths.toMutableList()
+    while(left.isNotEmpty()) {
+        val free=left.firstOrNull { a -> isFree(a,left.filter { it.id!=a.id },cols,rows) } ?: return false
+        left.remove(free)
+    }
+    return true
 }
 
 @Composable
@@ -134,15 +190,15 @@ private fun ArrowEscapeApp() {
 private fun isFree(a:ArrowPath,others:List<ArrowPath>,cols:Int,rows:Int):Boolean {
     val head=a.exit
     val d=a.direction
-    val limit= max(cols,rows)*2
-    for(i in 1..limit) {
-        val q=V(head.x+d.x*i*.18f,head.y+d.y*i*.18f)
-        if(q.x<0f||q.y<0f||q.x>cols||q.y>rows) return true
+    val maxSteps=max(cols,rows)*8
+    for(i in 1..maxSteps) {
+        val q=V(head.x+d.x*i*.125f,head.y+d.y*i*.125f)
+        if(q.x<0f || q.y<0f || q.x>cols || q.y>rows) return true
         for(o in others) for(j in 0 until o.points.lastIndex) {
-            if(pointNearSegment(q,o.points[j],o.points[j+1],.12f)) return false
+            if(pointNearSegment(q,o.points[j],o.points[j+1],.22f)) return false
         }
     }
-    return true
+    return false
 }
 private fun pointNearSegment(p:V,a:V,b:V,r:Float):Boolean {
     val dx=b.x-a.x; val dy=b.y-a.y
@@ -204,7 +260,7 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
                     val oy=(size.height-side*level.rows)/2f+pan.y
                     val p=V((pos.x-ox)/side,(pos.y-oy)/side)
                     val hit=level.paths.filter{it.id in remaining}.firstOrNull { path ->
-                        path.points.zipWithNext().any { (a,b)->pointNearSegment(p,a,b,.34f) }
+                        path.points.zipWithNext().any { (a,b)->pointNearSegment(p,a,b,.19f) }
                     }
                     hit?.let{onArrow(it.id)}
                 }
@@ -217,14 +273,14 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
                     val pts=arrow.points.map{Offset(ox+it.x*side,oy+it.y*side)}
                     val col=if(arrow.id==hintId) Blue else Navy
                     val path=Path().apply { pts.firstOrNull()?.let{moveTo(it.x,it.y)};pts.drop(1).forEach{lineTo(it.x,it.y)} }
-                    drawPath(path,col,style=Stroke(width=max(3.dp.toPx(),side*.07f),cap=StrokeCap.Round,join=PathEffectCorner))
+                    drawPath(path,col,style=Stroke(width=max(1.25.dp.toPx(),side*.038f),cap=StrokeCap.Round,join=PathEffectCorner))
                     val end=pts.last()
                     val angle=atan2(arrow.direction.y,arrow.direction.x)
-                    val len=side*.24f; val wing=side*.13f
+                    val len=side*.19f; val wing=side*.105f
                     val tip=Offset(end.x+cos(angle)*len,end.y+sin(angle)*len)
                     val left=Offset(tip.x-cos(angle)*len*.8f+sin(angle)*wing,tip.y-sin(angle)*len*.8f-cos(angle)*wing)
                     val right=Offset(tip.x-cos(angle)*len*.8f-sin(angle)*wing,tip.y-sin(angle)*len*.8f+cos(angle)*wing)
-                    drawLine(col,end,tip,strokeWidth=max(3.dp.toPx(),side*.07f),cap=StrokeCap.Round)
+                    drawLine(col,end,tip,strokeWidth=max(1.25.dp.toPx(),side*.038f),cap=StrokeCap.Round)
                     val head=Path().apply{moveTo(tip.x,tip.y);lineTo(left.x,left.y);lineTo(right.x,right.y);close()}
                     drawPath(head,col)
                 }
