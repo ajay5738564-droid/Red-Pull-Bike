@@ -167,17 +167,29 @@ private fun ArrowEscapeApp() {
 }
 
 private fun isFree(a:ArrowPath,others:List<ArrowPath>,cols:Int,rows:Int):Boolean {
-    val head=a.exit
-    val d=a.direction
-    val maxSteps=max(cols,rows)*8
-    for(i in 1..maxSteps) {
-        val q=V(head.x+d.x*i*.125f,head.y+d.y*i*.125f)
-        if(q.x<0f || q.y<0f || q.x>cols || q.y>rows) return true
-        for(o in others) for(j in 0 until o.points.lastIndex) {
-            if(pointNearSegment(q,o.points[j],o.points[j+1],.24f)) return false
+    val head=a.exit; val d=a.direction
+    // Direct orthogonal ray/segment checks replace costly point-by-point sampling.
+    for(o in others) for(j in 0 until o.points.lastIndex) {
+        val p=o.points[j]; val q=o.points[j+1]
+        if(abs(d.x)>.5f) {
+            if(abs(p.y-q.y)<.0001f && abs(p.y-head.y)<.18f) {
+                val lo=min(p.x,q.x); val hi=max(p.x,q.x)
+                if(if(d.x>0f) hi>head.x+.12f && lo<=cols else lo<head.x-.12f && hi>=0f) return false
+            } else if(abs(p.x-q.x)<.0001f && abs(p.x-head.x)<.12f) {
+                val lo=min(p.y,q.y); val hi=max(p.y,q.y)
+                if(head.y>=lo-.12f && head.y<=hi+.12f && (if(d.x>0f) p.x>head.x+.12f && p.x<=cols else p.x<head.x-.12f && p.x>=0f)) return false
+            }
+        } else {
+            if(abs(p.x-q.x)<.0001f && abs(p.x-head.x)<.18f) {
+                val lo=min(p.y,q.y); val hi=max(p.y,q.y)
+                if(if(d.y>0f) hi>head.y+.12f && lo<=rows else lo<head.y-.12f && hi>=0f) return false
+            } else if(abs(p.y-q.y)<.0001f && abs(p.y-head.y)<.12f) {
+                val lo=min(p.x,q.x); val hi=max(p.x,q.x)
+                if(head.x>=lo-.12f && head.x<=hi+.12f && (if(d.y>0f) p.y>head.y+.12f && p.y<=rows else p.y<head.y-.12f && p.y>=0f)) return false
+            }
         }
     }
-    return false
+    return true
 }
 private fun pointNearSegment(p:V,a:V,b:V,r:Float):Boolean {
     val dx=b.x-a.x; val dy=b.y-a.y
