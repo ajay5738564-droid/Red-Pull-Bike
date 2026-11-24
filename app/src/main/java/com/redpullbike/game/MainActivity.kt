@@ -41,99 +41,80 @@ class MainActivity : ComponentActivity() {
 
 private data class V(val x: Float, val y: Float)
 private data class ArrowPath(val id: Int, val points: List<V>, val exit: V, val direction: V)
-private data class PuzzleLevel(val id: Int, val cols: Int, val rows: Int, val paths: List<ArrowPath>, val difficulty: String)
+private data class PuzzleLevel(val id:Int,val cols:Int,val rows:Int,val paths:List<ArrowPath>,val difficulty:String,val artName:String)
 
 private object Levels {
-    private val cache = HashMap<Int, PuzzleLevel>()
-    fun get(id: Int): PuzzleLevel = cache.getOrPut(id.coerceIn(1,50)) { make(id.coerceIn(1,50)) }
+    private val names = listOf("APPLE","LION","DOG","CAT","BUTTERFLY","FISH","HEART","TURTLE","OWL","ROCKET","DINO","FLOWER")
+    // Each row is the left/right extent of the artwork silhouette on a 15x15 canvas.
+    private val silhouettes = listOf(
+        listOf(6 to 8,4 to 10,2 to 12,1 to 13,0 to 14,0 to 14,1 to 13,2 to 12,3 to 11,4 to 10,5 to 9,6 to 8,6 to 8,7 to 7,7 to 7), // apple
+        listOf(4 to 10,2 to 12,0 to 14,1 to 13,0 to 14,1 to 13,2 to 12,1 to 13,0 to 14,1 to 13,2 to 12,3 to 11,4 to 10,5 to 9,6 to 8), // lion mane
+        listOf(1 to 5,0 to 7,1 to 9,2 to 12,3 to 13,4 to 13,4 to 12,3 to 11,2 to 10,2 to 9,3 to 8,4 to 7,5 to 8,6 to 9,7 to 10), // dog
+        listOf(2 to 4,1 to 5,0 to 6,1 to 13,2 to 12,3 to 11,4 to 10,4 to 10,3 to 11,2 to 12,1 to 13,2 to 12,4 to 10,5 to 9,6 to 8), // cat
+        listOf(6 to 8,4 to 10,2 to 12,0 to 14,1 to 13,3 to 11,5 to 9,6 to 8,5 to 9,3 to 11,1 to 13,0 to 14,2 to 12,4 to 10,6 to 8), // butterfly
+        listOf(6 to 8,4 to 10,2 to 12,0 to 14,1 to 13,2 to 12,3 to 11,4 to 10,3 to 11,2 to 12,1 to 13,0 to 14,2 to 12,4 to 10,6 to 8), // fish
+        listOf(7 to 7,5 to 9,3 to 11,1 to 13,0 to 14,0 to 14,1 to 13,2 to 12,3 to 11,4 to 10,5 to 9,6 to 8,7 to 7,8 to 8,8 to 8), // heart
+        listOf(4 to 10,2 to 12,1 to 13,0 to 14,1 to 13,2 to 12,3 to 11,2 to 12,1 to 13,0 to 14,1 to 13,2 to 12,4 to 10,5 to 9,6 to 8), // turtle
+        listOf(5 to 9,3 to 11,1 to 13,0 to 14,1 to 13,2 to 12,3 to 11,4 to 10,3 to 11,2 to 12,1 to 13,2 to 12,3 to 11,4 to 10,5 to 9), // owl
+        listOf(7 to 7,6 to 8,5 to 9,4 to 10,3 to 11,2 to 12,1 to 13,0 to 14,1 to 13,2 to 12,3 to 11,4 to 10,5 to 9,6 to 8,7 to 7), // rocket
+        listOf(2 to 12,1 to 13,0 to 14,1 to 13,2 to 12,3 to 11,2 to 12,1 to 13,0 to 14,1 to 13,2 to 12,3 to 11,4 to 10,5 to 9,6 to 8), // dino
+        listOf(7 to 7,6 to 8,4 to 10,2 to 12,0 to 14,1 to 13,3 to 11,5 to 9,6 to 8,5 to 9,3 to 11,1 to 13,0 to 14,2 to 12,6 to 8) // flower
+    )
 
-    private fun make(id: Int): PuzzleLevel {
-        val tier = when(id) { in 1..5 -> 0; in 6..10 -> 1; in 11..20 -> 2; in 21..30 -> 3; in 31..40 -> 4; else -> 5 }
-        val cols = listOf(12,14,16,18,20,22)[tier] + if(id % 4 == 0) 1 else 0
-        val rows = listOf(12,14,16,18,20,22)[tier] + if(id % 5 == 0) 1 else 0
-        val count = (12 + id * .50f).roundToInt().coerceAtMost(38)
-        val rng = Random(id * 9109 + 73)
-        var best: List<ArrowPath>? = null
-        var bestFree = Int.MAX_VALUE
+    private val cache = HashMap<Int,PuzzleLevel>()
+    fun get(id:Int):PuzzleLevel = cache.getOrPut(id.coerceIn(1,50)) { make(id.coerceIn(1,50)) }
 
-        // Generate many candidate boards, then keep only boards that the real
-        // ray/path solver can completely clear. Prefer fewer initially-free arrows.
-        repeat(18) {
-            val candidate = ArrayList<ArrowPath>()
-            var serial = 0
-            while(candidate.size < count && serial < count * 35) {
-                serial++
-                val path = makePath(candidate.size, cols, rows, rng) ?: continue
-                if(candidate.none { pathsConflict(path, it) }) candidate += path
+    private fun make(id:Int):PuzzleLevel {
+        val artIndex = ((id-1)*7 + (id-1)/3) % silhouettes.size
+        val art = silhouettes[artIndex]
+        val tier = when(id) { in 1..5 -> 0; in 6..10 -> 1; in 11..20 -> 2; in 21..35 -> 3; else -> 4 }
+        val cols = 18 + tier*2
+        val rows = 18 + tier*2
+        val sx=(cols-2)/14f
+        val sy=(rows-2)/14f
+        val paths=ArrayList<ArrowPath>()
+        var nextId=0
+        val variant=(id-1)/silhouettes.size
+        art.forEachIndexed { row, span ->
+            val left=1f+span.first*sx
+            val right=1f+span.second*sx
+            val y=1f+row*sy
+            val width=right-left
+            val chunk=(3.7f + ((id+row)%3)*.35f).coerceAtMost(4.4f)
+            val pieces=max(1,ceil(width/chunk).toInt())
+            val gap=.26f
+            val usable=width-gap*(pieces-1)
+            val part=usable/pieces
+            val pointsForRow=(0 until pieces).map { index ->
+                val x0=left+index*(part+gap)
+                val x1=x0+part
+                val toRight=((row+variant)%2==0)
+                val bend=if((row+index+id)%2==0) -.28f else .28f
+                val points=if(toRight) listOf(V(x0,y+bend),V(x0,y),V(x1,y)) else listOf(V(x1,y+bend),V(x1,y),V(x0,y))
+                val exit=points.last()
+                val dir=if(toRight) V(1f,0f) else V(-1f,0f)
+                ArrowPath(nextId++,points,exit,dir)
             }
-            if(candidate.size < count) return@repeat
-            val initiallyFree = candidate.count { a ->
-                isFree(a, candidate.filter { it.id != a.id }, cols, rows)
-            }
-            if(initiallyFree == 0 || initiallyFree >= bestFree) return@repeat
-            if(canClear(candidate, cols, rows)) {
-                best = candidate.toList()
-                bestFree = initiallyFree
-                val target = when(id) { in 1..5 -> 4; in 6..10 -> 3; in 11..20 -> 2; in 21..35 -> 1; else -> 1 }
-                if(bestFree <= target) return@repeat
+            paths.addAll(pointsForRow)
+        }
+        // A few short vertical curved arrows add cross-blocking and break the
+        // easy row-by-row rhythm, while staying inside the artwork silhouette.
+        if(id>=6) {
+            val extras=(tier+1).coerceAtMost(5)
+            repeat(extras) { k ->
+                val col=2f+((id*3+k*5)%(cols-4))
+                val row=2f+((id*7+k*3)%(rows-6))
+                val direction=if((k+id)%2==0) V(0f,-1f) else V(0f,1f)
+                val end=V(col,row+2.2f)
+                val start=V(col+.28f,row)
+                val pts=if(direction.y<0) listOf(end,V(col,row+1f),V(col,row)) else listOf(start,V(col,row+1f),end)
+                val exit=pts.last()
+                paths += ArrowPath(nextId++,pts,exit,direction)
             }
         }
-
-        // Safe fallback: deterministic, valid paths with a clear outward lane.
-        val finalPaths = best ?: buildList {
-            for(y in 2 until rows-1 step 2) {
-                if(size >= count) break
-                add(ArrowPath(size, listOf(V(1f,y.toFloat()), V(cols-2f,y.toFloat()), V(cols-1f,y.toFloat())), V(cols-1f,y.toFloat()), V(1f,0f)))
-            }
-        }
-        return PuzzleLevel(id, cols, rows, finalPaths, when(id) {
-            in 1..5 -> "Normal"; in 6..15 -> "Hard"; in 16..35 -> "Very Hard"; else -> "Expert"
-        })
+        val diff=when(id){in 1..5->"Hard";in 6..15->"Very Hard";in 16..30->"Expert";else->"Master"}
+        return PuzzleLevel(id,cols,rows,paths,diff,names[artIndex])
     }
-
-    private fun makePath(id:Int, cols:Int, rows:Int, rng:Random):ArrowPath? {
-        val head = V(rng.nextInt(2, cols-2).toFloat(), rng.nextInt(2, rows-2).toFloat())
-        val dirs = listOf(V(1f,0f),V(-1f,0f),V(0f,1f),V(0f,-1f))
-        val direction = dirs[rng.nextInt(dirs.size)]
-        val backwards = ArrayList<V>()
-        backwards += head
-        var current = head
-        var back = V(-direction.x,-direction.y)
-        val segments = rng.nextInt(2,4)
-        repeat(segments) { index ->
-            val length = rng.nextInt(2,5).toFloat()
-            val next = V(current.x + back.x*length, current.y + back.y*length)
-            if(next.x < 1f || next.y < 1f || next.x > cols-1f || next.y > rows-1f) return null
-            backwards += next
-            current = next
-            if(index < segments-1) {
-                back = if(rng.nextBoolean()) V(-back.y,back.x) else V(back.y,-back.x)
-            }
-        }
-        return ArrowPath(id, backwards.reversed(), head, direction)
-    }
-
-    private fun pathsConflict(a:ArrowPath,b:ArrowPath):Boolean {
-        for(i in 0 until a.points.lastIndex) for(j in 0 until b.points.lastIndex) {
-            val p0=a.points[i]; val p1=a.points[i+1]
-            val q0=b.points[j]; val q1=b.points[j+1]
-            for(k in 0..8) {
-                val t=k/8f
-                val p=V(p0.x+(p1.x-p0.x)*t,p0.y+(p1.y-p0.y)*t)
-                if(pointNearSegment(p,q0,q1,.34f)) return true
-            }
-        }
-        return false
-    }
-}
-
-private fun canClear(paths:List<ArrowPath>,cols:Int,rows:Int):Boolean {
-    val left=paths.toMutableList()
-    while(left.isNotEmpty()) {
-        val free=left.firstOrNull { a -> isFree(a,left.filter { it.id!=a.id },cols,rows) } ?: return false
-        left.remove(free)
-    }
-    return true
 }
 
 @Composable
@@ -198,7 +179,7 @@ private fun isFree(a:ArrowPath,others:List<ArrowPath>,cols:Int,rows:Int):Boolean
         val q=V(head.x+d.x*i*.125f,head.y+d.y*i*.125f)
         if(q.x<0f || q.y<0f || q.x>cols || q.y>rows) return true
         for(o in others) for(j in 0 until o.points.lastIndex) {
-            if(pointNearSegment(q,o.points[j],o.points[j+1],.22f)) return false
+            if(pointNearSegment(q,o.points[j],o.points[j+1],.24f)) return false
         }
     }
     return false
@@ -250,7 +231,7 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
         Spacer(Modifier.height(14.dp))
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically) {
             Text("‹",fontSize=32.sp,color=Blue,modifier=Modifier.clickable{onBack()})
-            Column(horizontalAlignment=Alignment.CenterHorizontally){Text("Level ${level.id}",fontSize=18.sp,color=Color.Black,fontWeight=FontWeight.SemiBold);Text("${level.paths.count{it.id in remaining}} arrows",fontSize=12.sp,color=Color.Gray)}
+            Column(horizontalAlignment=Alignment.CenterHorizontally){Text("Level ${level.id}",fontSize=18.sp,color=Color.Black,fontWeight=FontWeight.SemiBold);Text("${level.artName}  •  ${level.paths.count{it.id in remaining}} arrows",fontSize=12.sp,color=Color.Gray)}
             Text(level.difficulty,fontSize=13.sp,color=Navy,modifier=Modifier.background(Pale,RoundedCornerShape(12.dp)).padding(10.dp))
         }
         Text("♥  ".repeat(lives)+"♡  ".repeat(3-lives),modifier=Modifier.fillMaxWidth(),textAlign=TextAlign.Center,fontSize=25.sp,color=Color(0xFFEF3048))
@@ -265,7 +246,7 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
                     val oy=(size.height-side*level.rows)/2f+pan.y
                     val p=V((pos.x-ox)/side,(pos.y-oy)/side)
                     val hit=level.paths.filter{it.id in remaining}.firstOrNull { path ->
-                        path.points.zipWithNext().any { (a,b)->pointNearSegment(p,a,b,.14f) }
+                        path.points.zipWithNext().any { (a,b)->pointNearSegment(p,a,b,.23f) }
                     }
                     hit?.let{onArrow(it.id)}
                 }
@@ -273,7 +254,7 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
                 val side=min(size.width/level.cols,size.height/level.rows)*zoom
                 val ox=(size.width-side*level.cols)/2f+pan.x
                 val oy=(size.height-side*level.rows)/2f+pan.y
-                if(grid) for(x in 0..level.cols) for(y in 0..level.rows) drawCircle(Color(0xFFDCE2E8),2.dp.toPx(),Offset(ox+x*side,oy+y*side))
+                if(grid) for(x in 0..level.cols) for(y in 0..level.rows) drawCircle(Color(0xFFDCE2E8),1.35.dp.toPx(),Offset(ox+x*side,oy+y*side))
                 level.paths.filter{it.id in remaining}.forEach { arrow ->
                     val bounceShift=if(arrow.id==bounceId) sin(bounceProgress*PI).toFloat()*side*.48f else 0f
                     val escapeCells=when {
