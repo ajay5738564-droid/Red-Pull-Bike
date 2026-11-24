@@ -66,7 +66,15 @@ private object Levels {
 
     private fun make(id:Int):PuzzleLevel {
         val artIndex = ((id-1)*7 + (id-1)/3) % silhouettes.size
-        val art = silhouettes[artIndex]
+        val baseArt = silhouettes[artIndex]
+        val variant=(id-1)/silhouettes.size
+        val art = (if(variant%3==1) baseArt.reversed() else baseArt).mapIndexed { row, span ->
+            val mirror = variant%2==1
+            val wobble = if(variant==0) 0 else ((row*variant+id)%3)-1
+            val left = (if(mirror) 14-span.second else span.first) + wobble
+            val right = (if(mirror) 14-span.first else span.second) - wobble
+            min(left,right).coerceIn(0,10) to max(left,right).coerceIn(4,14)
+        }
         val tier = when(id) { in 1..5 -> 0; in 6..10 -> 1; in 11..20 -> 2; in 21..35 -> 3; else -> 4 }
         val cols = 18 + tier*2
         val rows = 18 + tier*2
@@ -74,13 +82,12 @@ private object Levels {
         val sy=(rows-2)/14f
         val paths=ArrayList<ArrowPath>()
         var nextId=0
-        val variant=(id-1)/silhouettes.size
         art.forEachIndexed { row, span ->
             val left=1f+span.first*sx
             val right=1f+span.second*sx
             val y=1f+row*sy
             val width=right-left
-            val chunk=(3.7f + ((id+row)%3)*.35f).coerceAtMost(4.4f)
+            val chunk=(4.8f - tier*.38f + ((id+row)%2)*.16f).coerceAtLeast(2.9f)
             val pieces=max(1,ceil(width/chunk).toInt())
             val gap=.26f
             val usable=width-gap*(pieces-1)
@@ -96,21 +103,6 @@ private object Levels {
                 ArrowPath(nextId++,points,exit,dir)
             }
             paths.addAll(pointsForRow)
-        }
-        // A few short vertical curved arrows add cross-blocking and break the
-        // easy row-by-row rhythm, while staying inside the artwork silhouette.
-        if(id>=6) {
-            val extras=(tier+1).coerceAtMost(5)
-            repeat(extras) { k ->
-                val col=2f+((id*3+k*5)%(cols-4))
-                val row=2f+((id*7+k*3)%(rows-6))
-                val direction=if((k+id)%2==0) V(0f,-1f) else V(0f,1f)
-                val end=V(col,row+2.2f)
-                val start=V(col+.28f,row)
-                val pts=if(direction.y<0) listOf(end,V(col,row+1f),V(col,row)) else listOf(start,V(col,row+1f),end)
-                val exit=pts.last()
-                paths += ArrowPath(nextId++,pts,exit,direction)
-            }
         }
         val diff=when(id){in 1..5->"Hard";in 6..15->"Very Hard";in 16..30->"Expert";else->"Master"}
         return PuzzleLevel(id,cols,rows,paths,diff,names[artIndex])
