@@ -273,7 +273,15 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
                 val oy=(size.height-side*level.rows)/2f+pan.y
                 if(grid) for(x in 0..level.cols) for(y in 0..level.rows) drawCircle(Color(0xFFDCE2E8),2.dp.toPx(),Offset(ox+x*side,oy+y*side))
                 level.paths.filter{it.id in remaining}.forEach { arrow ->
-                    val shift=if(arrow.id==bounceId) sin(bounceProgress*PI).toFloat()*side*.48f else 0f
+                    val bounceShift=if(arrow.id==bounceId) sin(bounceProgress*PI).toFloat()*side*.48f else 0f
+                    val escapeCells=when {
+                        arrow.direction.x>0f -> level.cols-arrow.exit.x+1f
+                        arrow.direction.x<0f -> arrow.exit.x+1f
+                        arrow.direction.y>0f -> level.rows-arrow.exit.y+1f
+                        else -> arrow.exit.y+1f
+                    }
+                    val escapeShift=if(arrow.id==escapingId) escapeProgress*escapeCells*side else 0f
+                    val shift=bounceShift+escapeShift
                     val pts=arrow.points.map{Offset(ox+it.x*side+arrow.direction.x*shift,oy+it.y*side+arrow.direction.y*shift)}
                     val col=if(arrow.id==hintId) Blue else Navy
                     val path=Path().apply { pts.firstOrNull()?.let{moveTo(it.x,it.y)};pts.drop(1).forEach{lineTo(it.x,it.y)} }
