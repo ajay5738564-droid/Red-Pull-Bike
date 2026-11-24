@@ -17,7 +17,6 @@ import com.unity3d.ads.IUnityAdsLoadListener
 import com.unity3d.ads.IUnityAdsShowListener
 import com.unity3d.ads.UnityAds
 import com.unity3d.ads.UnityAdsShowOptions
-import com.unity3d.services.banners.BannerErrorInfo
 import com.unity3d.services.banners.BannerView
 import com.unity3d.services.banners.UnityBannerSize
 import kotlinx.coroutines.delay
@@ -123,14 +122,13 @@ fun UnityBottomBanner() {
                         UnityBannerSize(320, 50)
                     )
                     banner.setListener(object : BannerView.IListener {
-                        override fun onBannerLoaded(bannerAdView: BannerView) {
-                            Log.d("ArrowEscapeAds", "Bottom banner loaded")
+                        override fun onBannerShown(bannerAdView: BannerView) {
+                            Log.d("ArrowEscapeAds", "Bottom banner shown")
                         }
-                        override fun onBannerFailedToLoad(bannerAdView: BannerView, errorInfo: BannerErrorInfo) {
-                            Log.e("ArrowEscapeAds", "Banner load failed: ${errorInfo.errorMessage}")
+                        override fun onBannerClicked(bannerAdView: BannerView) {}
+                        override fun onBannerFailedToShow(bannerAdView: BannerView, error: UnityAds.UnityAdsShowError) {
+                            Log.e("ArrowEscapeAds", "Banner show failed: $error")
                         }
-                        override fun onBannerClick(bannerAdView: BannerView) {}
-                        override fun onBannerLeftApplication(bannerAdView: BannerView) {}
                     })
                     frame.addView(
                         banner,
