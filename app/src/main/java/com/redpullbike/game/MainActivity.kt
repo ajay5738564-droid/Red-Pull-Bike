@@ -50,13 +50,17 @@ private class ArrowPuzzleView(context: Context) : View(context) {
     private var timeLimitMs = 120_000L
     private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(detector: ScaleGestureDetector): Boolean {
-            boardZoom = (boardZoom * detector.scaleFactor).coerceIn(0.72f, 1.30f)
+            val oldZoom = boardZoom
+            boardZoom = (boardZoom * detector.scaleFactor).coerceIn(0.55f, 2.25f)
+            val factor = boardZoom / oldZoom
+            panX = detector.focusX - (detector.focusX - panX) * factor
+            panY = detector.focusY - (detector.focusY - panY) * factor
             invalidate()
             return true
         }
     })
     private var screen = 0
-    private var level = prefs.getInt("level", 1).coerceIn(1, 10)
+    private var level = prefs.getInt("level", 1).coerceIn(1, 50)
     private var coins = prefs.getInt("coins", 120)
     private var soundOn = prefs.getBoolean("sound", true)
     private var moves = 0
@@ -68,8 +72,11 @@ private class ArrowPuzzleView(context: Context) : View(context) {
     private val history = ArrayDeque<List<ArrowTile>>()
     private var boardLeft = 0f
     private var boardTop = 0f
+    private var boardWidth = 0f
+    private var boardHeight = 0f
     private var cell = 0f
-    private var gridSize = 6
+    private var gridWidth = 6
+    private var gridHeight = 6
     private var pulse = 0f
     private var lastHint = -1
     private var levelWon = false
@@ -173,7 +180,7 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         val dy = intArrayOf(-1, 0, 1, 0)[tile.dir]
         var x = tile.x + dx
         var y = tile.y + dy
-        while (x in 0 until gridSize && y in 0 until gridSize) {
+        while (x in 0 until gridWidth && y in 0 until gridHeight) {
             if (tiles.any { it.x == x && it.y == y }) return false
             x += dx; y += dy
         }
@@ -428,7 +435,7 @@ private class ArrowPuzzleView(context: Context) : View(context) {
             }
             2 -> {
                 if(y>h*.70f && y<h*.72f+58*density) {
-                    if(level>=10) { level=1;screen=0;save() }
+                    if(level>=50) { level=1;screen=0;save() }
                     else { level++;save();screen=1;generateLevel() }
                 } else if(y>h*.72f+60*density) { screen=0;save() }
             }
