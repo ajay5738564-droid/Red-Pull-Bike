@@ -179,7 +179,7 @@ private fun isFree(a:ArrowPath,others:List<ArrowPath>,cols:Int,rows:Int):Boolean
             if(abs(p.y-q.y)<.0001f && abs(p.y-head.y)<.18f) {
                 val lo=min(p.x,q.x); val hi=max(p.x,q.x)
                 if(if(d.x>0f) hi>head.x+.12f && lo<=cols else lo<head.x-.12f && hi>=0f) return false
-            } else if(abs(p.x-q.x)<.0001f && abs(p.x-head.x)<.12f) {
+            } else if(abs(p.x-q.x)<.0001f) {
                 val lo=min(p.y,q.y); val hi=max(p.y,q.y)
                 if(head.y>=lo-.12f && head.y<=hi+.12f && (if(d.x>0f) p.x>head.x+.12f && p.x<=cols else p.x<head.x-.12f && p.x>=0f)) return false
             }
@@ -187,7 +187,7 @@ private fun isFree(a:ArrowPath,others:List<ArrowPath>,cols:Int,rows:Int):Boolean
             if(abs(p.x-q.x)<.0001f && abs(p.x-head.x)<.18f) {
                 val lo=min(p.y,q.y); val hi=max(p.y,q.y)
                 if(if(d.y>0f) hi>head.y+.12f && lo<=rows else lo<head.y-.12f && hi>=0f) return false
-            } else if(abs(p.y-q.y)<.0001f && abs(p.y-head.y)<.12f) {
+            } else if(abs(p.y-q.y)<.0001f) {
                 val lo=min(p.x,q.x); val hi=max(p.x,q.x)
                 if(head.x>=lo-.12f && head.x<=hi+.12f && (if(d.y>0f) p.y>head.y+.12f && p.y<=rows else p.y<head.y-.12f && p.y>=0f)) return false
             }
