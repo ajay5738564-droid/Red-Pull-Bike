@@ -138,7 +138,7 @@ private fun ArrowEscapeApp() {
     var completed by remember { mutableIntStateOf(prefs.getInt("completed",0)) }
     val puzzle = remember(level) { Levels.get(level) }
     LaunchedEffect(bounceId) { if(bounceId>=0) { delay(280); bounceId=-1 } }
-    LaunchedEffect(animating) { val escaped=animating; if(escaped>=0) { delay(280); remaining=remaining-escaped; hintId=-1; animating=-1 } }
+    LaunchedEffect(animating) { val escaped=animating; if(escaped>=0) { delay(720); remaining=remaining-escaped; hintId=-1; animating=-1 } }
     fun start(id:Int) {
         level=id.coerceIn(1,50); remaining=Levels.get(level).paths.map { it.id }.toSet()
         lives=3; hints=if(level<=10) 2 else if(level<=30) 1 else 0
@@ -236,7 +236,7 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
 @Composable private fun SettingRow(label:String,value:Boolean,onChange:(Boolean)->Unit) { Row(Modifier.fillMaxWidth().padding(vertical=12.dp),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=Alignment.CenterVertically){Text(label,color=Navy);Switch(value,onChange)} }
 @Composable private fun GameScreen(level:PuzzleLevel,remaining:Set<Int>,lives:Int,hints:Int,hintId:Int,grid:Boolean,message:String,zoom:Float,pan:Offset,bounceId:Int,escapingId:Int,onZoom:(Float)->Unit,onPan:(Offset)->Unit,onArrow:(Int)->Unit,onHint:()->Unit,onGrid:()->Unit,onRestart:()->Unit,onBack:()->Unit) {
     val bounceProgress by animateFloatAsState(targetValue=if(bounceId>=0) 1f else 0f, animationSpec=tween(230, easing=FastOutSlowInEasing), label="arrowBounce")
-    val escapeProgress by animateFloatAsState(targetValue=if(escapingId>=0) 1f else 0f, animationSpec=tween(260, easing=LinearOutSlowInEasing), label="arrowEscape")
+    val escapeProgress by animateFloatAsState(targetValue=if(escapingId>=0) 1f else 0f, animationSpec=tween(680, easing=LinearOutSlowInEasing), label="arrowEscape")
     Column(Modifier.fillMaxSize().background(Color.White).padding(horizontal=18.dp, vertical=8.dp)) {
         Text("Tap Away\nArrows",modifier=Modifier.fillMaxWidth(),textAlign=TextAlign.Center,fontSize=30.sp,lineHeight=34.sp,fontWeight=FontWeight.ExtraBold,color=Navy)
         Spacer(Modifier.height(14.dp))
@@ -297,10 +297,10 @@ private fun HomeScreen(onPlay:()->Unit,onLevels:()->Unit,onSettings:()->Unit) {
                     }
                     val col=if(arrow.id==hintId) Blue else Navy
                     val path=Path().apply { pts.firstOrNull()?.let{moveTo(it.x,it.y)};pts.drop(1).forEach{lineTo(it.x,it.y)} }
-                    drawPath(path,col,style=Stroke(width=max(.85.dp.toPx(),side*.023f),cap=StrokeCap.Round,join=PathEffectCorner))
+                    drawPath(path,col,style=Stroke(width=max(.72.dp.toPx(),side*.014f),cap=StrokeCap.Round,join=PathEffectCorner))
                     val end=pts.last()
                     val angle=atan2(arrow.direction.y,arrow.direction.x)
-                    val len=side*.135f; val wing=side*.072f
+                    val len=side*.105f; val wing=side*.052f
                     val tip=Offset(end.x+cos(angle)*len,end.y+sin(angle)*len)
                     val left=Offset(tip.x-cos(angle)*len*.8f+sin(angle)*wing,tip.y-sin(angle)*len*.8f-cos(angle)*wing)
                     val right=Offset(tip.x-cos(angle)*len*.8f-sin(angle)*wing,tip.y-sin(angle)*len*.8f+cos(angle)*wing)
