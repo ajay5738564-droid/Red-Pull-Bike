@@ -110,10 +110,10 @@ private class ArrowPuzzleView(context: Context) : View(context) {
 
     private fun generateLevel() {
         val tier = (level - 1) / 3
-        gridWidth = (5 + tier + if (level % 3 == 2) 1 else 0).coerceAtMost(12)
-        gridHeight = (5 + tier + if (level % 3 == 0) 1 else 0).coerceAtMost(12)
+        gridWidth = (5 + tier + if (level % 3 == 2) 1 else 0).coerceAtMost(16)
+        gridHeight = (5 + tier + if (level % 3 == 0) 1 else 0).coerceAtMost(16)
         val totalCells = gridWidth * gridHeight
-        val density = (0.34f + level * 0.0018f).coerceAtMost(0.49f)
+        val density = (0.30f + level * 0.0055f).coerceAtMost(0.58f)
         val target = (totalCells * density).roundToInt().coerceAtMost(totalCells - 2)
         val random = Random(level * 7919)
         val cells = (0 until totalCells).shuffled(random).take(target)
@@ -258,7 +258,7 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         text(c,"⚙",w-28*density,166*density,25*density,cyan,Paint.Align.CENTER,true)
         rounded(c,18*density,187*density,116*density,228*density,12*density,Color.rgb(242,246,250))
         text(c,"➤  "+board.size,67*density,214*density,15*density,white,Paint.Align.CENTER,true)
-        text(c,"♥  ♥  ♥",w*.5f,219*density,25*density,Color.rgb(239,48,65),Paint.Align.CENTER,true)
+        text(c,("♥  ".repeat(hearts))+("♡  ".repeat(3-hearts)),w*.5f,219*density,25*density,Color.rgb(239,48,65),Paint.Align.CENTER,true)
         rounded(c,w-112*density,187*density,w-18*density,228*density,12*density,Color.rgb(242,246,250))
         val difficulty = when(level) { in 1..10 -> "Easy"; in 11..25 -> "Normal"; in 26..40 -> "Hard"; else -> "Expert" }
         text(c,difficulty,w-65*density,214*density,14*density,muted,Paint.Align.CENTER)
@@ -269,6 +269,10 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         boardHeight = cell * gridHeight
         boardLeft = (w-boardWidth)*.5f + panX
         boardTop = (h-boardHeight)*.46f + panY
+        for(y in 0 until gridHeight) for(x in 0 until gridWidth) {
+            p.color=Color.rgb(220,224,230); p.style=Paint.Style.FILL
+            c.drawCircle(boardLeft+(x+.5f)*cell,boardTop+(y+.5f)*cell,1.25f*density,p)
+        }
         for(tile in board) drawTile(c,tile)
         val btnY=h-112*density
         val gap=9*density; val bw=(w-40*density-2*gap)/3f
