@@ -89,20 +89,24 @@ private object Levels {
             val right=1f+span.second*sx
             val y=1f+row*sy
             val width=right-left
-            val chunk=(4.8f - tier*.38f + ((id+row)%2)*.16f).coerceAtLeast(2.9f)
+            val chunk=(2.55f - tier*.13f + ((id+row)%3)*.09f).coerceAtLeast(1.85f)
             val pieces=max(1,ceil(width/chunk).toInt())
-            val gap=.26f
+            val gap=.16f
             val usable=width-gap*(pieces-1)
             val part=usable/pieces
             val pointsForRow=(0 until pieces).map { index ->
                 val x0=left+index*(part+gap)
                 val x1=x0+part
                 val toRight=((row+variant)%2==0)
-                val bend=if((row+index+id)%2==0) -.28f else .28f
-                val amp=.22f*sy
-                val a=part*.22f
-                val b=part*.52f
-                val points=if(toRight) listOf(V(x0,y+amp),V(x0,y-amp),V(x0+a,y-amp),V(x0+a,y+amp),V(x0+b,y+amp),V(x0+b,y-amp),V(x1,y-amp)) else listOf(V(x1,y+amp),V(x1,y-amp),V(x1-a,y-amp),V(x1-a,y+amp),V(x1-b,y+amp),V(x1-b,y-amp),V(x0,y-amp))
+                val amp=(.30f + ((id+row+index)%3)*.055f)*sy
+                val turns=3+((id*3+row+index)%3)
+                val fractions=(1..turns).map { it.toFloat()/(turns+1f) }
+                val zig=fractions.mapIndexed { k,f ->
+                    val x=x0+part*f
+                    val yy=y+(if((k+row+id+index)%2==0) -amp else amp)
+                    V(x,yy)
+                }
+                val points=if(toRight) listOf(V(x0,y+amp*.35f))+zig+listOf(V(x1,y+(if((turns+row+id)%2==0) -amp else amp))) else listOf(V(x1,y+amp*.35f))+zig.asReversed().map { V(x1-(it.x-x0),it.y) }+listOf(V(x0,y+(if((turns+row+id)%2==0) -amp else amp)))
                 val exit=points.last()
                 val dir=if(toRight) V(1f,0f) else V(-1f,0f)
                 ArrowPath(nextId++,points,exit,dir)
