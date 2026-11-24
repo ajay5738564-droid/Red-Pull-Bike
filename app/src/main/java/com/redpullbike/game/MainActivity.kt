@@ -204,6 +204,7 @@ private class GameHud(ctx: Context, private val state: GameState) : View(ctx) {
                 label(canvas,"BACK",w*.20f,h*.85f,18f)
             }
         }
+        postInvalidateDelayed(33)
     }
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val x=event.x
