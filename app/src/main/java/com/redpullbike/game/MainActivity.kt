@@ -82,16 +82,14 @@ private class ArrowPuzzleView(context: Context) : View(context) {
     private var levelWon = false
     private var best = prefs.getInt("best_" + level, 0)
 
-    private val bg1 = Color.rgb(10, 18, 42)
-    private val bg2 = Color.rgb(25, 39, 76)
-    private val cyan = Color.rgb(60, 226, 238)
-    private val gold = Color.rgb(255, 198, 76)
-    private val white = Color.rgb(245, 249, 255)
-    private val muted = Color.rgb(159, 178, 211)
-    private val tileColors = intArrayOf(
-        Color.rgb(50, 205, 222), Color.rgb(110, 137, 255),
-        Color.rgb(183, 112, 255), Color.rgb(255, 160, 85)
-    )
+    private val bg1 = Color.WHITE
+    private val bg2 = Color.rgb(250, 251, 253)
+    private val cyan = Color.rgb(18, 139, 218)
+    private val gold = Color.rgb(18, 139, 218)
+    private val white = Color.rgb(29, 37, 76)
+    private val muted = Color.rgb(111, 119, 139)
+    private val arrowNavy = Color.rgb(28, 36, 76)
+    private val tileColors = intArrayOf(arrowNavy)
 
     init { isFocusable = true; generateLevel() }
 
@@ -115,7 +113,7 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         gridWidth = (5 + tier + if (level % 3 == 2) 1 else 0).coerceAtMost(12)
         gridHeight = (5 + tier + if (level % 3 == 0) 1 else 0).coerceAtMost(12)
         val totalCells = gridWidth * gridHeight
-        val density = (0.66f + level * 0.0028f).coerceAtMost(0.82f)
+        val density = (0.34f + level * 0.0018f).coerceAtMost(0.49f)
         val target = (totalCells * density).roundToInt().coerceAtMost(totalCells - 2)
         val random = Random(level * 7919)
         val cells = (0 until totalCells).shuffled(random).take(target)
@@ -201,8 +199,8 @@ private class ArrowPuzzleView(context: Context) : View(context) {
     private fun text(c: Canvas, s: String, x: Float, y: Float, size: Float, color: Int = white, align: Paint.Align = Paint.Align.LEFT, bold: Boolean = false) {
         p.shader = null; p.style = Paint.Style.FILL; p.color = color; p.textSize = size
         p.textAlign = align; p.typeface = Typeface.create(if (bold) "sans-serif-black" else "sans-serif-medium", if (bold) Typeface.BOLD else Typeface.NORMAL)
-        p.clearShadowLayer(); p.setShadowLayer(3f, 0f, 2f, Color.BLACK)
-        c.drawText(s,x,y,p); p.clearShadowLayer()
+        p.clearShadowLayer()
+        c.drawText(s,x,y,p)
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -211,12 +209,7 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         if (w <= 0f || h <= 0f) return
         p.shader = LinearGradient(0f,0f,w,h,bg1,bg2,Shader.TileMode.CLAMP)
         canvas.drawRect(0f,0f,w,h,p); p.shader = null
-        drawAmbient(canvas,w,h)
-        if (screen == 1 && SystemClock.uptimeMillis() - levelStartMs >= timeLimitMs) {
-            screen = 3
-            message = "Time ran out! Try again."
-            playSfx(ToneGenerator.TONE_PROP_NACK)
-        }
+        // Clean, minimal white puzzle background.
         when (screen) {
             0 -> drawHome(canvas,w,h)
             1 -> drawGame(canvas,w,h)
@@ -228,15 +221,8 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         postInvalidateDelayed(40)
     }
 
-    private fun drawAmbient(c: Canvas,w:Float,h:Float) {
-        for (i in 0..7) {
-            val x = (w * (i + 1) / 9f) + sin(pulse + i) * 12f * density
-            val y = (h * ((i * 37 % 83) + 8) / 100f)
-            p.color = Color.argb(25,80,210,255); p.style=Paint.Style.FILL
-            c.drawCircle(x,y,(3f + (i%3))*density,p)
-        }
-        p.color=Color.argb(18,90,220,255); p.style=Paint.Style.STROKE; p.strokeWidth=1.2f*density
-        c.drawCircle(w*.5f,h*.42f,w*.39f,p); p.style=Paint.Style.FILL
+    private fun drawAmbient(c:Canvas,w:Float,h:Float) {
+        // Intentionally empty: keep the reference-style background clean and white.
     }
 
     private fun drawLogo(c:Canvas,w:Float,y:Float) {
@@ -265,33 +251,31 @@ private class ArrowPuzzleView(context: Context) : View(context) {
     }
 
     private fun drawGame(c:Canvas,w:Float,h:Float) {
-        text(c,"ARROW ESCAPE",20*density,34*density,19*density,white,bold=true)
-        text(c,"LEVEL "+level,w*.5f,34*density,15*density,cyan,Paint.Align.CENTER,true)
-        text(c,"◆ "+coins,w-20*density,34*density,15*density,gold,Paint.Align.RIGHT,true)
-        text(c,"♥ ".repeat(hearts)+"♡ ".repeat(3-hearts),w*.5f,59*density,17*density,Color.rgb(255,91,125),Paint.Align.CENTER,true)
-        text(c,"SCORE  "+score,20*density,59*density,11*density,gold)
-        val secondsLeft = ((timeLimitMs - (SystemClock.uptimeMillis() - levelStartMs)).coerceAtLeast(0L) / 1000L)
-        text(c,"TIME  "+secondsLeft+"s",w-20*density,59*density,11*density,if(secondsLeft<15) Color.rgb(255,100,120) else gold,Paint.Align.RIGHT,true)
-        text(c,message,w*.5f,83*density,10*density,muted,Paint.Align.CENTER)
-        val baseCell = min((w - 24*density) / gridWidth, (h*.52f) / gridHeight)
+        text(c,"Tap Away",w*.5f,76*density,31*density,white,Paint.Align.CENTER,true)
+        text(c,"Arrows",w*.5f,116*density,31*density,white,Paint.Align.CENTER,true)
+        text(c,"LEVEL "+level,w*.5f,165*density,16*density,Color.BLACK,Paint.Align.CENTER,true)
+        text(c,"‹",28*density,168*density,32*density,cyan,Paint.Align.CENTER,true)
+        text(c,"⚙",w-28*density,166*density,25*density,cyan,Paint.Align.CENTER,true)
+        rounded(c,18*density,187*density,116*density,228*density,12*density,Color.rgb(242,246,250))
+        text(c,"➤  "+board.size,67*density,214*density,15*density,white,Paint.Align.CENTER,true)
+        text(c,"♥  ♥  ♥",w*.5f,219*density,25*density,Color.rgb(239,48,65),Paint.Align.CENTER,true)
+        rounded(c,w-112*density,187*density,w-18*density,228*density,12*density,Color.rgb(242,246,250))
+        val difficulty = when(level) { in 1..10 -> "Easy"; in 11..25 -> "Normal"; in 26..40 -> "Hard"; else -> "Expert" }
+        text(c,difficulty,w-65*density,214*density,14*density,muted,Paint.Align.CENTER)
+        text(c,message,w*.5f,249*density,10*density,muted,Paint.Align.CENTER)
+        val baseCell = min((w - 28*density) / gridWidth, (h*.48f) / gridHeight)
         cell = baseCell * boardZoom
         boardWidth = cell * gridWidth
         boardHeight = cell * gridHeight
         boardLeft = (w-boardWidth)*.5f + panX
-        boardTop = (h-boardHeight)*.42f + panY
-        for(y in 0 until gridHeight) for(x in 0 until gridWidth) {
-            p.color=Color.argb(35,140,180,220); p.style=Paint.Style.FILL
-            c.drawCircle(boardLeft+(x+.5f)*cell,boardTop+(y+.5f)*cell,1.4f*density,p)
-        }
+        boardTop = (h-boardHeight)*.46f + panY
         for(tile in board) drawTile(c,tile)
-        val rowY=boardTop+boardHeight+27*density
-        text(c,"MOVES  "+moves,rowY*0f+20*density,rowY,12*density,muted,bold=true)
-        text(c,"LEFT  "+board.size,w-20*density,rowY,12*density,cyan,Paint.Align.RIGHT,true)
-        val btnY=h-66*density
+        val btnY=h-112*density
         val gap=9*density; val bw=(w-40*density-2*gap)/3f
-        smallButton(c,"HINT",20*density,btnY,20*density+bw,btnY+43*density,gold)
-        smallButton(c,"UNDO",20*density+bw+gap,btnY,20*density+2*bw+gap,btnY+43*density,Color.rgb(66,105,168))
-        smallButton(c,"RESTART",20*density+2*(bw+gap),btnY,w-20*density,btnY+43*density,Color.rgb(66,105,168))
+        smallButton(c,"HINT",20*density,btnY,20*density+bw,btnY+43*density,cyan)
+        smallButton(c,"UNDO",20*density+bw+gap,btnY,20*density+2*bw+gap,btnY+43*density,cyan)
+        smallButton(c,"RESTART",20*density+2*(bw+gap),btnY,w-20*density,btnY+43*density,cyan)
+        text(c,"Pinch to zoom • drag to move",w*.5f,h-14*density,10*density,muted,Paint.Align.CENTER)
     }
 
     private fun drawTile(c:Canvas,tile:ArrowTile) {
@@ -299,7 +283,7 @@ private class ArrowPuzzleView(context: Context) : View(context) {
         val t=boardTop+tile.y*cell+1*density
         val r=boardLeft+(tile.x+1)*cell-1*density
         val b=boardTop+(tile.y+1)*cell-1*density
-        val base=tileColors[(tile.x+tile.y+level)%tileColors.size]
+        val base=arrowNavy
         if(tile.id==lastHint) {
             p.color=Color.argb(65,255,198,76);p.style=Paint.Style.FILL
             c.drawCircle((l+r)*.5f,(t+b)*.5f,cell*.32f,p)
@@ -324,7 +308,7 @@ private class ArrowPuzzleView(context: Context) : View(context) {
             cy += intArrayOf(-1,0,1,0)[tile.dir] * bump
             if (progress >= 1f) { collisionTileId = -1; collisionBlockerId = -1 } else postInvalidateDelayed(16)
         }
-        drawArrow(c,cx,cy,cell*.70f,tile.dir,base, max(1.5f*density,cell*.065f))
+        drawArrow(c,cx,cy,cell*.78f,tile.dir,base, max(1.8f*density,cell*.055f))
     }
 
     private fun drawArrow(c:Canvas,cx:Float,cy:Float,size:Float,dir:Int,color:Int,stroke:Float) {
