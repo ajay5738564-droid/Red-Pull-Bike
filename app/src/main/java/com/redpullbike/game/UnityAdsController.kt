@@ -35,11 +35,11 @@ object UnityAdsController {
         UnityAds.initialize(
             activity.applicationContext,
             GAME_ID,
-            true,
+            false,
             object : IUnityAdsInitializationListener {
                 override fun onInitializationComplete() {
                     initialized = true
-                    Log.d("ArrowEscapeAds", "Unity Ads initialized in TEST mode")
+                    Log.d("ArrowEscapeAds", "Unity Ads initialized in PRODUCTION mode")
                 }
 
                 override fun onInitializationFailed(
